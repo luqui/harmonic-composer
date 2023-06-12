@@ -1,8 +1,11 @@
+import {Viewport} from "./Viewport";
+import p5 from "p5";
+
 export class QuantizationGrid {
     private xsnap: number;
     private ysnap: number;
 
-    constructor(xsnap, ysnap) {
+    constructor(xsnap: number, ysnap: number) {
         this.xsnap = xsnap;
         this.ysnap = ysnap;
     }
@@ -11,22 +14,22 @@ export class QuantizationGrid {
         this.xsnap = xsnap;
     }
 
-    snapX(x): number {
-        if (xsnap == 0)
+    snapX(x: number): number {
+        if (this.xsnap == 0)
             return x;
 
-        return xsnap * Math.round(x/xsnap);
+        return this.xsnap * Math.round(x/this.xsnap);
     }
 
     setYSnap(ysnap: number) {
         this.ysnap = ysnap;
     }
 
-    snapY(y): number {
-        if (ysnap == 0)
+    snapY(y: number): number {
+        if (this.ysnap == 0)
             return y;
 
-        return ysnap * Math.round(y/ysnap);
+        return this.ysnap * Math.round(y/this.ysnap);
     }
 
     drawGrid(p: p5, viewport: Viewport) {
