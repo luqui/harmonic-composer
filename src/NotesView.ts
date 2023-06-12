@@ -20,12 +20,14 @@ export class NotesView {
   private notes: Note[];
   private isDragging: boolean;
   private dragStart: Point;
+  private selectedNote: Note;
 
   constructor(quantizationGrid: QuantizationGrid) {
     this.quantizationGrid = quantizationGrid;
     this.notes = [];
     this.isDragging = false;
     this.dragStart = null;
+    this.selectedNote = null;
   }
 
   getMouseCoords(p: p5, viewport: Viewport): Point {
@@ -45,22 +47,52 @@ export class NotesView {
   }
 
   handleMousePressed(p: p5, viewport: Viewport): void {
+    const coords = this.getMouseCoords(p, viewport);
+    for (const note of this.notes) {
+        if (coords.y == note.pitch && note.startTime <= coords.x && note.endTime >= coords.x) {
+            this.selectedNote = note;
+            return;
+        }
+    }
+
     this.isDragging = true;
     this.dragStart = this.getMouseCoords(p, viewport);
   }
 
   handleMouseReleased(p: p5, viewport: Viewport): void {
     if (this.isDragging) {
-      this.notes.push(this.getDrawingNote(p, viewport));
-      this.isDragging = false;
+      const newNote = this.getDrawingNote(p, viewport);
+
+      if (newNote.startTime != newNote.endTime) {
+        this.notes.push(newNote);
+        this.isDragging = false;
+        this.selectedNote = newNote;
+      }
     }
+  }
+
+  handleKeyPressed(p: p5): void {
+      if (p.keyCode === p.ESCAPE) {
+          this.selectedNote = null;
+          this.isDragging = false;
+          this.dragStart = null;
+      }
+      else if (p.keyCode === p.BACKSPACE) {
+          this.notes = this.notes.filter(n => n !== this.selectedNote);
+          this.selectedNote = null;
+      }
   }
 
   draw(p: p5, viewport: Viewport): void {
     const noteHeight = 6;
 
     const drawNote = (note: Note) => {
-      p.fill(0, 102, 153);
+      if (note == this.selectedNote) {
+        p.fill(0, 204, 255);
+      }
+      else {
+        p.fill(0, 102, 153);
+      }
       const x0 = viewport.mapX(note.startTime, p);
       const y0 = viewport.mapY(note.pitch, p) + noteHeight / 2;
       const x1 = viewport.mapX(note.endTime, p);

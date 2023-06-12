@@ -28,6 +28,10 @@ const sketch = (p: p5) => {
     notesView.handleMouseReleased(p, viewport);
   };
 
+  p.keyPressed = () => {
+    notesView.handleKeyPressed(p);
+  };
+
   p.draw = () => {
     p.background(255);
     grid.drawGrid(p, viewport);
