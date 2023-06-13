@@ -15,6 +15,10 @@ export class QuantizationGrid {
         this.xsnap = xsnap;
     }
 
+    getXSnap(): number {
+        return this.xsnap;
+    }
+
     snapX(x: number): number {
         if (this.xsnap == 0)
             return x;

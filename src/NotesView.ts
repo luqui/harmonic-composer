@@ -86,25 +86,46 @@ export class Player {
   }
 };
 
+type SerializedNote = { startTime: number, endTime: number, pitch: string };
+type Serialized = { notes: SerializedNote[] };
+
 
 export class NotesView {
   private quantizationGrid: QuantizationGrid;
   private notes: Note[];
   private isDragging: boolean;
   private dragStart: Point;
-  private selectedNote: Note;
+  private selectedNotes: Note[];
   private instrument: Instrument;
-
-  private runningGCD: ExactNumberType; 
 
   constructor(quantizationGrid: QuantizationGrid) {
     this.quantizationGrid = quantizationGrid;
     this.notes = [];
     this.isDragging = false;
     this.dragStart = null;
-    this.selectedNote = null;
+    this.selectedNotes = [];
     this.instrument = new ToneSynth();
-    this.runningGCD = N("0");
+  }
+
+  serialize(): Serialized {
+      return {
+          notes: this.notes.map((n: Note) => ({ 
+              startTime: n.startTime, 
+              endTime: n.endTime, 
+              pitch: n.pitch.toString() 
+          }))
+      };
+  }
+
+  deserialize(s: Serialized): void {
+      this.notes = s.notes.map((n: SerializedNote) => ({
+          startTime: n.startTime,
+          endTime: n.endTime,
+          pitch: N(n.pitch)
+      }));
+      this.isDragging = false;
+      this.dragStart = null;
+      this.selectedNotes = [];
   }
 
   getMouseCoords(p: p5, viewport: Viewport): Point {
@@ -128,21 +149,24 @@ export class NotesView {
         const noteBox = this.getNoteBox(note, p, viewport);
         if (noteBox.x0 <= p.mouseX && p.mouseX <= noteBox.xf 
          && noteBox.y0 <= p.mouseY && p.mouseY <= noteBox.yf) {
+            this.instrument.playNote(note.pitch.toNumber(), 0.33);
             if (p.keyIsDown(p.SHIFT)) {
-                this.runningGCD = N.gcd(this.runningGCD, note.pitch);
-                this.quantizationGrid.setYSnap(this.runningGCD);
+                if (this.selectedNotes.includes(note)) {
+                    this.selectedNotes = this.selectedNotes.filter(n => n != note);
+                }
+                else {
+                    this.selectedNotes.push(note);
+                }
             }
             else {
-                this.instrument.playNote(note.pitch.toNumber(), 0.33);
-                this.selectedNote = note;
+                this.selectedNotes = [note];
             }
             return;
         }
     }
 
-    if (p.keyIsDown(p.SHIFT)) {
-        this.runningGCD = N.gcd(this.runningGCD, this.getMouseCoords(p, viewport).y);
-        this.quantizationGrid.setYSnap(this.runningGCD);
+    if (p.keyIsDown(p.OPTION)) {
+        this.quantizationGrid.setYSnap(this.getMouseCoords(p, viewport).y);
         return;
     }
 
@@ -159,7 +183,7 @@ export class NotesView {
 
       if (newNote.startTime != newNote.endTime) {
         this.notes.push(newNote);
-        this.selectedNote = newNote;
+        this.selectedNotes = [newNote];
       }
     }
     this.isDragging = false;
@@ -167,19 +191,25 @@ export class NotesView {
 
   handleKeyPressed(p: p5): void {
       if (p.keyCode === p.ESCAPE) {
-          this.selectedNote = null;
+          this.selectedNotes = [];
           this.isDragging = false;
           this.dragStart = null;
       }
       else if (p.keyCode === p.BACKSPACE) {
-          this.notes = this.notes.filter(n => n !== this.selectedNote);
-          this.selectedNote = null;
+          this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
+          this.selectedNotes = [];
       }
-  }
-
-  handleKeyReleased(p: p5): void {
-      if (p.keyCode === p.SHIFT) {
-          this.runningGCD = N("0");
+      else if (p.keyCode == 71) { // g  -- gcd
+          if (this.selectedNotes.length > 0) {
+              const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch), N("0"));
+              this.quantizationGrid.setYSnap(gcd);
+          }
+      }
+      else if (p.keyCode == 76) { // l  -- lcm
+          if (this.selectedNotes.length > 0) {
+              const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch), N("1"));
+              this.quantizationGrid.setYSnap(lcm);
+          }
       }
   }
 
@@ -202,7 +232,7 @@ export class NotesView {
     p.colorMode(p.RGB);
     const drawNote = (note: Note) => {
       p.strokeWeight(1);
-      if (note == this.selectedNote) {
+      if (this.selectedNotes.includes(note)) {
         p.stroke(0, 204, 255);
         p.fill(0, 204, 255);
       }

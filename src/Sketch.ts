@@ -2,7 +2,7 @@ import p5 from "p5";
 import { Viewport, LinearViewport, LogViewport } from "./Viewport";
 import { QuantizationGrid } from "./QuantizationGrid";
 import { NotesView, Player } from "./NotesView";
-import { ExactNumber as N } from "exactnumber";
+import { ExactNumberType, ExactNumber as N } from "exactnumber";
 
 const sketch = (p: p5) => {
   let viewport: Viewport;
@@ -19,6 +19,17 @@ const sketch = (p: p5) => {
     player = null;
 
     p.frameRate(24);
+
+    const loadHash = () => {
+        const jsonStr = Buffer.from(document.location.hash, "base64").toString()
+        const json = JSON.parse(jsonStr);
+        notesView.deserialize(json);
+    };
+
+    loadHash();
+    window.addEventListener('hashchange', (e:Event) => {
+        loadHash();
+    });
   };
 
   p.windowResized = () => {
@@ -36,6 +47,25 @@ const sketch = (p: p5) => {
 
   p.keyPressed = () => {
     notesView.handleKeyPressed(p);
+
+    const subdivKey = (subdiv: ExactNumberType) => {
+        if (p.keyIsDown(p.CONTROL)) {
+            if (p.keyIsDown(p.SHIFT)) {
+                grid.setXSnap(grid.getXSnap() * subdiv.toNumber());
+            }
+            else {
+                grid.setXSnap(grid.getXSnap() / subdiv.toNumber());
+            }
+        }
+        else {
+            if (p.keyIsDown(p.SHIFT)) {
+                grid.setYSnap(grid.getYSnap().mul(subdiv));
+            }
+            else {
+                grid.setYSnap(grid.getYSnap().div(subdiv));
+            }
+        }
+    };
 
     switch (p.keyCode) {
         case 32: { // space
@@ -81,28 +111,19 @@ const sketch = (p: p5) => {
             break;
         }
         case 50: { // 2
-            if (p.keyIsDown(p.SHIFT)) {
-                grid.setYSnap(grid.getYSnap().mul('2'));
-            }
-            else {
-                grid.setYSnap(grid.getYSnap().div('2'));
-            }
+            subdivKey(N('2'));
             break;
         }
         case 51: { // 3
-            if (p.keyIsDown(p.SHIFT)) {
-                grid.setYSnap(grid.getYSnap().mul('3'));
-            }
-            else {
-                grid.setYSnap(grid.getYSnap().div('3'));
-            }
+            subdivKey(N('3'));
             break;
         }
+        case 83: {// s -- save
+            if (p.keyIsDown(p.CONTROL)) {
+                document.location.hash = Buffer.from(JSON.stringify(notesView.serialize())).toString("base64");
+            }
+        }
     }
-  };
-
-  p.keyReleased = () => {
-    notesView.handleKeyReleased(p);
   };
 
   p.draw = () => {
