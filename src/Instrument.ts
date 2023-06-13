@@ -105,7 +105,7 @@ export class MPEInstrument implements Instrument {
       return;
     }
 
-    const channel = this.availableChannels.pop()!;
+    const channel = this.availableChannels.splice(0, 1)[0];
     this.channelMap.set(freq, channel);
 
     const [note, pitchBend] = this.frequencyToMidiAndPitchBend(freq);
