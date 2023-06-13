@@ -47,7 +47,7 @@ export class QuantizationGrid {
         if (this.ysnap != 0) {
             const y0 = viewport.mapYinv(p.height, p);
             const yf = viewport.mapYinv(0, p);
-            for (let y = y0; y < yf; y += this.ysnap) {
+            for (let y = 0; y < yf; y += this.ysnap) {
               p.line(0, viewport.mapY(y, p), p.width, viewport.mapY(y, p));
             }
         }

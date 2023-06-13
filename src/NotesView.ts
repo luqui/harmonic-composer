@@ -3,6 +3,7 @@ import {QuantizationGrid} from "./QuantizationGrid";
 import {Viewport} from "./Viewport";
 import {Instrument} from "./Instrument";
 
+const NOTE_HEIGHT = 10;
 
 interface Note {
   startTime: number;
@@ -106,15 +107,23 @@ export class NotesView {
   }
 
   handleMousePressed(p: p5, viewport: Viewport): void {
-    const coords = this.getMouseCoords(p, viewport);
     for (const note of this.notes) {
-        if (coords.y == note.pitch && note.startTime <= coords.x && note.endTime >= coords.x) {
-            this.instrument.playNote(coords.y, 0.33);
-            this.selectedNote = note;
+        const noteBox = this.getNoteBox(note, p, viewport);
+        console.log(noteBox, p.mouseX, p.mouseY);
+        if (noteBox.x0 <= p.mouseX && p.mouseX <= noteBox.xf 
+         && noteBox.y0 <= p.mouseY && p.mouseY <= noteBox.yf) {
+            if (p.keyIsDown(p.SHIFT)) {
+                this.quantizationGrid.setYSnap(note.pitch);
+            }
+            else {
+                this.instrument.playNote(this.getMouseCoords(p,viewport).y, 0.33);
+                this.selectedNote = note;
+            }
             return;
         }
     }
 
+    const coords = this.getMouseCoords(p, viewport);
     this.instrument.startNote(coords.y);
     this.isDragging = true;
     this.dragStart = this.getMouseCoords(p, viewport);
@@ -127,10 +136,10 @@ export class NotesView {
 
       if (newNote.startTime != newNote.endTime) {
         this.notes.push(newNote);
-        this.isDragging = false;
         this.selectedNote = newNote;
       }
     }
+    this.isDragging = false;
   }
 
   handleKeyPressed(p: p5): void {
@@ -151,9 +160,16 @@ export class NotesView {
       return player;
   }
 
-  draw(p: p5, viewport: Viewport): void {
-    const noteHeight = 6;
+  getNoteBox(note: Note, p:p5, viewport: Viewport): { x0: number, y0: number, xf: number, yf: number } {
+      return {
+          x0: viewport.mapX(note.startTime, p),
+          y0: viewport.mapY(note.pitch, p) - NOTE_HEIGHT / 2,
+          xf: viewport.mapX(note.endTime, p), 
+          yf: viewport.mapY(note.pitch, p) + NOTE_HEIGHT / 2
+      }
+  }
 
+  draw(p: p5, viewport: Viewport): void {
     const drawNote = (note: Note) => {
       if (note == this.selectedNote) {
         p.fill(0, 204, 255);
@@ -161,10 +177,8 @@ export class NotesView {
       else {
         p.fill(0, 102, 153);
       }
-      const x0 = viewport.mapX(note.startTime, p);
-      const y0 = viewport.mapY(note.pitch, p) + noteHeight / 2;
-      const x1 = viewport.mapX(note.endTime, p);
-      p.rect(x0, y0, x1 - x0, noteHeight);
+      const noteBox = this.getNoteBox(note, p, viewport);
+      p.rect(noteBox.x0, noteBox.yf, noteBox.xf - noteBox.x0, noteBox.yf - noteBox.y0);
     };
 
     if (this.isDragging) {
