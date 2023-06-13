@@ -53,7 +53,7 @@ export class NotesView {
     const coords = this.getMouseCoords(p, viewport);
     for (const note of this.notes) {
         if (coords.y == note.pitch && note.startTime <= coords.x && note.endTime >= coords.x) {
-            this.instrument.playNote(coords.y, 0.5);
+            this.instrument.playNote(coords.y, 0.33);
             this.selectedNote = note;
             return;
         }
