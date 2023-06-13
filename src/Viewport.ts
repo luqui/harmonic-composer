@@ -4,7 +4,8 @@ export interface Viewport {
   mapX(x: number, p: p5): number;
   mapXinv(x: number, p: p5): number;
   mapY(y: number, p: p5): number;
-  mapYinv(y: number, p:p5): number;
+  mapYinv(y: number, p: p5): number;
+  translateX(dx: number): void;
 }
 
 export class LinearViewport {
@@ -34,6 +35,11 @@ export class LinearViewport {
 
   mapYinv(y: number, p:p5): number {
     return p.map(y, p.height, 0, this.minY, this.maxY);
+  }
+
+  translateX(dx: number): void {
+    this.minX += dx;
+    this.maxX += dx;
   }
 }
 
@@ -68,5 +74,10 @@ export class LogViewport {
     let ynorm = p.map(y, p.height, 0, this.minNote, this.maxNote);
     let hz = 440 * Math.pow(2, (ynorm - 69) / 12);
     return hz;
+  }
+  
+  translateX(dx: number): void {
+    this.minX += dx;
+    this.maxX += dx;
   }
 }

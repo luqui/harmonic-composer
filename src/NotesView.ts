@@ -93,7 +93,7 @@ export class NotesView {
     this.isDragging = false;
     this.dragStart = null;
     this.selectedNote = null;
-    this.instrument = new MPEInstrument(12);
+    this.instrument = new ToneSynth();
     this.runningGCD = N("0");
   }
 

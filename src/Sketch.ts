@@ -37,14 +37,27 @@ const sketch = (p: p5) => {
   p.keyPressed = () => {
     notesView.handleKeyPressed(p);
 
-    if (p.keyCode === 32) {
-        if (player) {
-            player.stop();
-            player = null;
+    switch (p.keyCode) {
+        case 32: {
+            if (player) {
+                player.stop();
+                player = null;
+            }
+            else {
+                player = notesView.play(p);
+                console.log("Playing", player);
+            }
+            break;
         }
-        else {
-            player = notesView.play(p);
-            console.log("Playing", player);
+        case 37: {
+            const width = viewport.mapXinv(p.width, p) - viewport.mapXinv(0, p);
+            viewport.translateX(-width / 4);
+            break;
+        }
+        case 39: {
+            const width = viewport.mapXinv(p.width, p) - viewport.mapXinv(0, p);
+            viewport.translateX(width / 4);
+            break;
         }
     }
   };
