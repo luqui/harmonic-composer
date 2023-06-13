@@ -13,7 +13,7 @@ const sketch = (p: p5) => {
   p.setup = () => {
     p.createCanvas(p.windowWidth, p.windowHeight);
     // viewport = new LinearViewport(0, 32, 40, 1600);
-    viewport = new LogViewport(0, 1, 40, 127);
+    viewport = new LogViewport(0, 36, 40, 108);
     grid = new QuantizationGrid(1, N("216"));
     notesView = new NotesView(grid);
     player = null;
@@ -38,7 +38,7 @@ const sketch = (p: p5) => {
     notesView.handleKeyPressed(p);
 
     switch (p.keyCode) {
-        case 32: {
+        case 32: { // space
             if (player) {
                 player.stop();
                 player = null;
@@ -49,15 +49,35 @@ const sketch = (p: p5) => {
             }
             break;
         }
-        case 37: {
-            const width = viewport.mapXinv(p.width, p) - viewport.mapXinv(0, p);
-            viewport.translateX(-width / 4);
+        case 37: { // <-
+            viewport.translateX(-0.25);
             break;
         }
-        case 39: {
-            const width = viewport.mapXinv(p.width, p) - viewport.mapXinv(0, p);
-            viewport.translateX(width / 4);
+        case 39: { // ->
+            viewport.translateX(0.25);
             break;
+        }
+        case 38: { // ^
+            viewport.translateY(0.25);
+            break;
+        }
+        case 40: { // v
+            viewport.translateY(-0.25);
+            break;
+        }
+        case 86: { // 'v'
+            const xmin = viewport.mapXinv(0, p);
+            const xmax = viewport.mapXinv(p.width, p);
+            const ymin = viewport.mapYinv(p.height, p);
+            const ymax = viewport.mapYinv(0, p);
+            if (viewport instanceof LogViewport) {
+                viewport = new LinearViewport(xmin, ymin, xmax, ymax);
+            }
+            else {
+                const noteMin = ymin < 0 ? 1 : 12 * Math.log2(ymin / 440) + 69;
+                const noteMax = ymax < 0 ? 1 : 12 * Math.log2(ymax / 440) + 69;
+                viewport = new LogViewport(xmin, noteMin, xmax, noteMax); 
+            }
         }
     }
   };
