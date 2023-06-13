@@ -47,6 +47,10 @@ const sketch = (p: p5) => {
     }
   };
 
+  p.keyReleased = () => {
+    notesView.handleKeyReleased(p);
+  };
+
   p.draw = () => {
     p.background(255);
     grid.drawGrid(p, viewport);

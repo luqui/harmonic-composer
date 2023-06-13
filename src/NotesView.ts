@@ -84,13 +84,16 @@ export class NotesView {
   private selectedNote: Note;
   private instrument: Instrument;
 
+  private runningGCD: ExactNumberType; 
+
   constructor(quantizationGrid: QuantizationGrid) {
     this.quantizationGrid = quantizationGrid;
     this.notes = [];
     this.isDragging = false;
     this.dragStart = null;
     this.selectedNote = null;
-    this.instrument = new Instrument();
+    this.instrument = new Instrument()
+    this.runningGCD = N("0");
   }
 
   getMouseCoords(p: p5, viewport: Viewport): Point {
@@ -115,7 +118,8 @@ export class NotesView {
         if (noteBox.x0 <= p.mouseX && p.mouseX <= noteBox.xf 
          && noteBox.y0 <= p.mouseY && p.mouseY <= noteBox.yf) {
             if (p.keyIsDown(p.SHIFT)) {
-                this.quantizationGrid.setYSnap(note.pitch);
+                this.runningGCD = N.gcd(this.runningGCD, note.pitch);
+                this.quantizationGrid.setYSnap(this.runningGCD);
             }
             else {
                 this.instrument.playNote(note.pitch.toNumber(), 0.33);
@@ -126,7 +130,8 @@ export class NotesView {
     }
 
     if (p.keyIsDown(p.SHIFT)) {
-        this.quantizationGrid.setYSnap(this.getMouseCoords(p, viewport).y);
+        this.runningGCD = N.gcd(this.runningGCD, this.getMouseCoords(p, viewport).y);
+        this.quantizationGrid.setYSnap(this.runningGCD);
         return;
     }
 
@@ -158,6 +163,12 @@ export class NotesView {
       else if (p.keyCode === p.BACKSPACE) {
           this.notes = this.notes.filter(n => n !== this.selectedNote);
           this.selectedNote = null;
+      }
+  }
+
+  handleKeyReleased(p: p5): void {
+      if (p.keyCode === p.SHIFT) {
+          this.runningGCD = N("0");
       }
   }
 

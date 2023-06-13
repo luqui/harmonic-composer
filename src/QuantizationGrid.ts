@@ -1,6 +1,6 @@
 import {Viewport} from "./Viewport";
 import p5 from "p5";
-import {ExactNumberType} from "exactnumber";
+import {ExactNumberType, ExactNumber as N} from "exactnumber";
 
 export class QuantizationGrid {
     private xsnap: number;
@@ -27,11 +27,12 @@ export class QuantizationGrid {
     }
 
     snapY(y: number): ExactNumberType {
-        if (this.ysnap.lte(y)) {
-            return this.ysnap.mul(this.ysnap.inv().mul(y).round());
+        const yn = N(String(y));
+        if (this.ysnap.lte(yn)) {
+            return this.ysnap.mul(this.ysnap.inv().mul(yn).round());
         }
         else {
-            return this.ysnap.div(this.ysnap.div(y).round());
+            return this.ysnap.div(this.ysnap.div(yn).round());
         }
     }
 
