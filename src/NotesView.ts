@@ -1,6 +1,7 @@
 import p5 from "p5";
 import {QuantizationGrid} from "./QuantizationGrid";
 import {Viewport} from "./Viewport";
+import {Instrument} from "./Instrument";
 
 
 interface Note {
@@ -21,6 +22,7 @@ export class NotesView {
   private isDragging: boolean;
   private dragStart: Point;
   private selectedNote: Note;
+  private instrument: Instrument;
 
   constructor(quantizationGrid: QuantizationGrid) {
     this.quantizationGrid = quantizationGrid;
@@ -28,6 +30,7 @@ export class NotesView {
     this.isDragging = false;
     this.dragStart = null;
     this.selectedNote = null;
+    this.instrument = new Instrument();
   }
 
   getMouseCoords(p: p5, viewport: Viewport): Point {
@@ -50,11 +53,13 @@ export class NotesView {
     const coords = this.getMouseCoords(p, viewport);
     for (const note of this.notes) {
         if (coords.y == note.pitch && note.startTime <= coords.x && note.endTime >= coords.x) {
+            this.instrument.playNote(coords.y, 0.5);
             this.selectedNote = note;
             return;
         }
     }
 
+    this.instrument.startNote(coords.y);
     this.isDragging = true;
     this.dragStart = this.getMouseCoords(p, viewport);
   }
@@ -62,6 +67,7 @@ export class NotesView {
   handleMouseReleased(p: p5, viewport: Viewport): void {
     if (this.isDragging) {
       const newNote = this.getDrawingNote(p, viewport);
+      this.instrument.stopNote(newNote.pitch, 0);
 
       if (newNote.startTime != newNote.endTime) {
         this.notes.push(newNote);

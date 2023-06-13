@@ -40,4 +40,5 @@ const sketch = (p: p5) => {
 };
 
 const myP5 = new p5(sketch, document.getElementById('sketch-container'));
+
 export default myP5;
