@@ -41,13 +41,8 @@ export class Player {
     if (!this.playing) {
         return;
     }
-
+    
     let t = this.tempo * (p.millis()/1000 - this.startTime);
-    while (this.index < this.notes.length && this.notes[this.index].startTime < t) {
-      this.instrument.startNote(this.notes[this.index].pitch.toNumber());
-      this.playingNotes.push(this.notes[this.index]);
-      this.index++;
-    }
 
     this.playingNotes = this.playingNotes.filter((note: Note) => {
         if (note.endTime < t) {
@@ -58,6 +53,12 @@ export class Player {
             return true;
         }
     });
+
+    while (this.index < this.notes.length && this.notes[this.index].startTime < t) {
+      this.instrument.startNote(this.notes[this.index].pitch.toNumber());
+      this.playingNotes.push(this.notes[this.index]);
+      this.index++;
+    }
   }
 
   play(p: p5) {
