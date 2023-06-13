@@ -38,7 +38,9 @@ export class QuantizationGrid {
     }
 
     drawGrid(p: p5, viewport: Viewport) {
-        p.stroke(200);
+        p.colorMode(p.HSB);
+
+        p.stroke(0, 0, 85);
         p.strokeWeight(1);
         
         if (this.xsnap != 0) {
@@ -52,9 +54,11 @@ export class QuantizationGrid {
         if (this.ysnap != 0) {
             // upper lines
             {
+
                 const y0 = this.ysnap;
                 const yf = viewport.mapYinv(0, p);
-                for (let y = y0; y < yf; y += this.ysnap) {
+                for (let y = y0, i = 1; y < yf; y += this.ysnap, i++) {
+                  p.stroke((256*Math.log2(i)) % 256, 128, 196);
                   p.line(0, viewport.mapY(y, p), p.width, viewport.mapY(y, p));
                 }
             }

@@ -173,6 +173,7 @@ export class NotesView {
   }
 
   draw(p: p5, viewport: Viewport): void {
+    p.colorMode(p.RGB);
     const drawNote = (note: Note) => {
       if (note == this.selectedNote) {
         p.fill(0, 204, 255);
