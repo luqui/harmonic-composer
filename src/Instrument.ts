@@ -5,7 +5,13 @@ declare var p5: p5mod;
 
 const RELEASE_TIME : number = 0.02;
 
-export class Instrument {
+export interface Instrument {
+    startNote(freq: number): void;
+    stopNote(freq: number, secondsFromNow: number): void;
+    playNote(freq: number, duration: number): void;
+}
+
+export class ToneSynth implements Instrument {
     private oscs: { [freq: number]: { osc: p5mod.Oscillator, env: p5mod.Envelope } };
 
     constructor() {
@@ -13,7 +19,7 @@ export class Instrument {
         console.log(p5sound);
     }
 
-    startNote(freq: number) {
+    startNote(freq: number): void {
         this.stopNote(freq, 0);
 
         // Horrible typescript fighting.
@@ -28,7 +34,7 @@ export class Instrument {
         this.oscs[freq] = { osc: osc, env: env };
     }
 
-    stopNote(freq: number, secondsFromNow: number) {
+    stopNote(freq: number, secondsFromNow: number): void {
         if (this.oscs[freq]) {
             const osc = this.oscs[freq];
             delete this.oscs[freq];
@@ -38,7 +44,7 @@ export class Instrument {
         }
     }
 
-    playNote(freq: number, duration: number) {
+    playNote(freq: number, duration: number): void {
         this.startNote(freq);
         this.stopNote(freq, duration);
     }

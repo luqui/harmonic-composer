@@ -1,7 +1,7 @@
 import p5 from "p5";
 import {QuantizationGrid} from "./QuantizationGrid";
 import {Viewport} from "./Viewport";
-import {Instrument} from "./Instrument";
+import {ToneSynth, Instrument} from "./Instrument";
 import {ExactNumber as N, ExactNumberType} from "exactnumber";
 
 const NOTE_HEIGHT = 10;
@@ -26,14 +26,14 @@ export class Player {
   private instrument: Instrument;
   private tempo: number;
 
-  constructor(notes: Note[], tempo: number) {
+  constructor(notes: Note[], tempo: number, instrument: Instrument) {
     this.notes = [...notes];
     this.notes.sort((a,b) => 
         a.startTime < b.startTime ? -1 : a.startTime == b.startTime ? 0 : 1);
     this.playingNotes = [];
 
     this.playing = false;
-    this.instrument = new Instrument();
+    this.instrument = instrument;
     this.tempo = tempo;
   }
 
@@ -92,7 +92,7 @@ export class NotesView {
     this.isDragging = false;
     this.dragStart = null;
     this.selectedNote = null;
-    this.instrument = new Instrument()
+    this.instrument = new ToneSynth();
     this.runningGCD = N("0");
   }
 
@@ -173,7 +173,7 @@ export class NotesView {
   }
 
   play(p: p5): Player {
-      const player = new Player(this.notes, 4);
+      const player = new Player(this.notes, 4, this.instrument);
       player.play(p);
       return player;
   }
