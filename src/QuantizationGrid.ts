@@ -29,7 +29,12 @@ export class QuantizationGrid {
         if (this.ysnap == 0)
             return y;
 
-        return this.ysnap * Math.round(y/this.ysnap);
+        if (y >= this.ysnap) {
+            return this.ysnap * Math.round(y/this.ysnap);
+        }
+        else {
+            return this.ysnap / Math.round(this.ysnap/y);
+        }
     }
 
     drawGrid(p: p5, viewport: Viewport) {
@@ -45,10 +50,22 @@ export class QuantizationGrid {
         }
 
         if (this.ysnap != 0) {
-            const y0 = viewport.mapYinv(p.height, p);
-            const yf = viewport.mapYinv(0, p);
-            for (let y = 0; y < yf; y += this.ysnap) {
-              p.line(0, viewport.mapY(y, p), p.width, viewport.mapY(y, p));
+            // upper lines
+            {
+                const y0 = this.ysnap;
+                const yf = viewport.mapYinv(0, p);
+                for (let y = y0; y < yf; y += this.ysnap) {
+                  p.line(0, viewport.mapY(y, p), p.width, viewport.mapY(y, p));
+                }
+            }
+
+            // lower lines
+            {
+                const yBottom = viewport.mapYinv(p.height, p);
+                const y0 = this.ysnap;
+                for (let n = 2; y0 / n > 1 && y0 / n > yBottom; n++) {
+                  p.line(0, viewport.mapY(y0 / n, p), p.width, viewport.mapY(y0 / n, p));
+                }
             }
         }
     }

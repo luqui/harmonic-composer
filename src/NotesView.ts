@@ -23,8 +23,9 @@ export class Player {
   private startTime: number;
   private index: number;
   private instrument: Instrument;
+  private tempo: number;
 
-  constructor(notes: Note[]) {
+  constructor(notes: Note[], tempo: number) {
     this.notes = [...notes];
     this.notes.sort((a,b) => 
         a.startTime < b.startTime ? -1 : a.startTime == b.startTime ? 0 : 1);
@@ -32,6 +33,7 @@ export class Player {
 
     this.playing = false;
     this.instrument = new Instrument();
+    this.tempo = tempo;
   }
 
   step(p: p5) {
@@ -39,7 +41,7 @@ export class Player {
         return;
     }
 
-    let t = p.millis()/1000 - this.startTime;
+    let t = this.tempo * (p.millis()/1000 - this.startTime);
     while (this.index < this.notes.length && this.notes[this.index].startTime < t) {
       this.instrument.startNote(this.notes[this.index].pitch);
       this.playingNotes.push(this.notes[this.index]);
@@ -113,6 +115,7 @@ export class NotesView {
         if (noteBox.x0 <= p.mouseX && p.mouseX <= noteBox.xf 
          && noteBox.y0 <= p.mouseY && p.mouseY <= noteBox.yf) {
             if (p.keyIsDown(p.SHIFT)) {
+                console.log("Set Y snap to ", note.pitch);
                 this.quantizationGrid.setYSnap(note.pitch);
             }
             else {
@@ -155,7 +158,7 @@ export class NotesView {
   }
 
   play(p: p5): Player {
-      const player = new Player(this.notes);
+      const player = new Player(this.notes, 4);
       player.play(p);
       return player;
   }
@@ -178,7 +181,7 @@ export class NotesView {
         p.fill(0, 102, 153);
       }
       const noteBox = this.getNoteBox(note, p, viewport);
-      p.rect(noteBox.x0, noteBox.yf, noteBox.xf - noteBox.x0, noteBox.yf - noteBox.y0);
+      p.rect(noteBox.x0, noteBox.y0, noteBox.xf - noteBox.x0, noteBox.yf - noteBox.y0);
     };
 
     if (this.isDragging) {
