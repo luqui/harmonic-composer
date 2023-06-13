@@ -2,18 +2,19 @@ import p5 from "p5";
 import {QuantizationGrid} from "./QuantizationGrid";
 import {Viewport} from "./Viewport";
 import {Instrument} from "./Instrument";
+import {ExactNumber as N, ExactNumberType} from "exactnumber";
 
 const NOTE_HEIGHT = 10;
 
 interface Note {
   startTime: number;
   endTime: number;
-  pitch: number;
+  pitch: ExactNumberType;
 }
 
 interface Point {
   x: number;
-  y: number;
+  y: ExactNumberType;
 }
 
 export class Player {
@@ -43,14 +44,14 @@ export class Player {
 
     let t = this.tempo * (p.millis()/1000 - this.startTime);
     while (this.index < this.notes.length && this.notes[this.index].startTime < t) {
-      this.instrument.startNote(this.notes[this.index].pitch);
+      this.instrument.startNote(this.notes[this.index].pitch.toNumber());
       this.playingNotes.push(this.notes[this.index]);
       this.index++;
     }
 
     this.playingNotes = this.playingNotes.filter((note: Note) => {
         if (note.endTime < t) {
-            this.instrument.stopNote(note.pitch, 0);
+            this.instrument.stopNote(note.pitch.toNumber(), 0);
             return false;
         }
         else {
@@ -67,7 +68,7 @@ export class Player {
 
   stop() {
       for (const n of this.playingNotes) {
-          this.instrument.stopNote(n.pitch, 0);
+          this.instrument.stopNote(n.pitch.toNumber(), 0);
       }
       this.playing = false;
       this.playingNotes = [];
@@ -117,7 +118,7 @@ export class NotesView {
                 this.quantizationGrid.setYSnap(note.pitch);
             }
             else {
-                this.instrument.playNote(note.pitch, 0.33);
+                this.instrument.playNote(note.pitch.toNumber(), 0.33);
                 this.selectedNote = note;
             }
             return;
@@ -130,7 +131,7 @@ export class NotesView {
     }
 
     const coords = this.getMouseCoords(p, viewport);
-    this.instrument.startNote(coords.y);
+    this.instrument.startNote(coords.y.toNumber());
     this.isDragging = true;
     this.dragStart = this.getMouseCoords(p, viewport);
   }
@@ -138,7 +139,7 @@ export class NotesView {
   handleMouseReleased(p: p5, viewport: Viewport): void {
     if (this.isDragging) {
       const newNote = this.getDrawingNote(p, viewport);
-      this.instrument.stopNote(newNote.pitch, 0);
+      this.instrument.stopNote(newNote.pitch.toNumber(), 0);
 
       if (newNote.startTime != newNote.endTime) {
         this.notes.push(newNote);
@@ -169,9 +170,9 @@ export class NotesView {
   getNoteBox(note: Note, p:p5, viewport: Viewport): { x0: number, y0: number, xf: number, yf: number } {
       return {
           x0: viewport.mapX(note.startTime, p),
-          y0: viewport.mapY(note.pitch, p) - NOTE_HEIGHT / 2,
+          y0: viewport.mapY(note.pitch.toNumber(), p) - NOTE_HEIGHT / 2,
           xf: viewport.mapX(note.endTime, p), 
-          yf: viewport.mapY(note.pitch, p) + NOTE_HEIGHT / 2
+          yf: viewport.mapY(note.pitch.toNumber(), p) + NOTE_HEIGHT / 2
       }
   }
 

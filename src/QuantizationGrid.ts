@@ -1,11 +1,12 @@
 import {Viewport} from "./Viewport";
 import p5 from "p5";
+import {ExactNumberType} from "exactnumber";
 
 export class QuantizationGrid {
     private xsnap: number;
-    private ysnap: number;
+    private ysnap: ExactNumberType;
 
-    constructor(xsnap: number, ysnap: number) {
+    constructor(xsnap: number, ysnap: ExactNumberType) {
         this.xsnap = xsnap;
         this.ysnap = ysnap;
     }
@@ -21,19 +22,16 @@ export class QuantizationGrid {
         return this.xsnap * Math.round(x/this.xsnap);
     }
 
-    setYSnap(ysnap: number) {
+    setYSnap(ysnap: ExactNumberType) {
         this.ysnap = ysnap;
     }
 
-    snapY(y: number): number {
-        if (this.ysnap == 0)
-            return y;
-
-        if (y >= this.ysnap) {
-            return this.ysnap * Math.round(y/this.ysnap);
+    snapY(y: number): ExactNumberType {
+        if (this.ysnap.lte(y)) {
+            return this.ysnap.mul(this.ysnap.inv().mul(y).round());
         }
         else {
-            return this.ysnap / Math.round(this.ysnap/y);
+            return this.ysnap.div(this.ysnap.div(y).round());
         }
     }
 
@@ -51,26 +49,36 @@ export class QuantizationGrid {
             }
         }
 
-        if (this.ysnap != 0) {
-            // upper lines
-            {
-                const y0 = this.ysnap;
-                const yf = viewport.mapYinv(0, p);
-                for (let y = y0, i = 1; y < yf; y += this.ysnap, i++) {
-                  p.stroke((256*Math.log2(i)) % 256, 128, 196);
-                  p.line(0, viewport.mapY(y, p), p.width, viewport.mapY(y, p));
-                }
-            }
-
-            // lower lines
-            {
-                const yBottom = viewport.mapYinv(p.height, p);
-                const y0 = this.ysnap;
-                for (let n = 2; y0 / n > 1 && y0 / n > yBottom; n++) {
-                  p.stroke((256*Math.log2(n)) % 256, 128, 196);
-                  p.line(0, viewport.mapY(y0 / n, p), p.width, viewport.mapY(y0 / n, p));
-                }
+        // upper lines
+        {
+            const y0 = this.ysnap.toNumber();
+            const yf = viewport.mapYinv(0, p);
+            for (let y = y0, i = 1; y < yf; y += y0, i++) {
+              p.strokeWeight(3 * (this.twoDivs(i) + 1) / Math.log2(i));
+              p.stroke((256*Math.log2(i)) % 256, 128, 196);
+              p.line(0, viewport.mapY(y, p), p.width, viewport.mapY(y, p));
             }
         }
+
+        // lower lines
+        {
+            const yBottom = viewport.mapYinv(p.height, p);
+            const y0 = this.ysnap.toNumber();
+            for (let n = 2; y0 / n > 1 && y0 / n > yBottom; n++) {
+              p.strokeWeight(3 * (this.twoDivs(n) + 1) / Math.log2(n));
+              p.stroke((256*Math.log2(n)) % 256, 128, 196);
+              p.line(0, viewport.mapY(y0 / n, p), p.width, viewport.mapY(y0 / n, p));
+            }
+        }
+    }
+
+    twoDivs(n: number): number {
+        let r = 0;
+        n = Math.floor(n);
+        while (n % 2 == 0) {
+            r++;
+            n = Math.floor(n / 2);
+        }
+        return r;
     }
 }
