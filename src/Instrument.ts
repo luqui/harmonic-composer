@@ -24,7 +24,7 @@ export class Instrument {
         const env = new p5.Envelope();
         env.setADSR(0.05, 5, 0, RELEASE_TIME);
         osc.start();
-        env.play(osc);
+        env.triggerAttack(osc, 0);
         this.oscs[freq] = { osc: osc, env: env };
     }
 
