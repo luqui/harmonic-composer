@@ -17,6 +17,8 @@ const sketch = (p: p5) => {
     grid = new QuantizationGrid(1, N("216"));
     notesView = new NotesView(grid);
     player = null;
+
+    p.frameRate(24);
   };
 
   p.windowResized = () => {
