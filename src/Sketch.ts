@@ -78,6 +78,25 @@ const sketch = (p: p5) => {
                 const noteMax = ymax < 0 ? 1 : 12 * Math.log2(ymax / 440) + 69;
                 viewport = new LogViewport(xmin, noteMin, xmax, noteMax); 
             }
+            break;
+        }
+        case 50: { // 2
+            if (p.keyIsDown(p.SHIFT)) {
+                grid.setYSnap(grid.getYSnap().mul('2'));
+            }
+            else {
+                grid.setYSnap(grid.getYSnap().div('2'));
+            }
+            break;
+        }
+        case 51: { // 3
+            if (p.keyIsDown(p.SHIFT)) {
+                grid.setYSnap(grid.getYSnap().mul('3'));
+            }
+            else {
+                grid.setYSnap(grid.getYSnap().div('3'));
+            }
+            break;
         }
     }
   };

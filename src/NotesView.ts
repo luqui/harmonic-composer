@@ -197,10 +197,13 @@ export class NotesView {
   draw(p: p5, viewport: Viewport): void {
     p.colorMode(p.RGB);
     const drawNote = (note: Note) => {
+      p.strokeWeight(1);
       if (note == this.selectedNote) {
+        p.stroke(0, 204, 255);
         p.fill(0, 204, 255);
       }
       else {
+        p.stroke(0, 0, 0);
         p.fill(0, 102, 153);
       }
       const noteBox = this.getNoteBox(note, p, viewport);

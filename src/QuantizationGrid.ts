@@ -26,6 +26,10 @@ export class QuantizationGrid {
         this.ysnap = ysnap;
     }
 
+    getYSnap(): ExactNumberType {
+        return this.ysnap;
+    }
+
     snapY(y: number): ExactNumberType {
         const yn = N(String(y));
         if (this.ysnap.lte(yn)) {
@@ -50,11 +54,16 @@ export class QuantizationGrid {
             }
         }
 
+        // fundamental line
+        p.stroke(0, 0, 0);
+        p.strokeWeight(3);
+        p.line(0, viewport.mapY(this.ysnap.toNumber(), p), p.width, viewport.mapY(this.ysnap.toNumber(), p));
+
         // upper lines
         {
             const y0 = this.ysnap.toNumber();
             const yf = viewport.mapYinv(0, p);
-            for (let y = y0, i = 1; y < yf; y += y0, i++) {
+            for (let y = 2*y0, i = 2; y < yf; y += y0, i++) {
               p.strokeWeight(3 * (this.twoDivs(i) + 1) / Math.log2(i));
               p.stroke((256*Math.log2(i)) % 256, 128, 196);
               p.line(0, viewport.mapY(y, p), p.width, viewport.mapY(y, p));
