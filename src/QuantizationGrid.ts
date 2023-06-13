@@ -54,7 +54,6 @@ export class QuantizationGrid {
         if (this.ysnap != 0) {
             // upper lines
             {
-
                 const y0 = this.ysnap;
                 const yf = viewport.mapYinv(0, p);
                 for (let y = y0, i = 1; y < yf; y += this.ysnap, i++) {
@@ -68,6 +67,7 @@ export class QuantizationGrid {
                 const yBottom = viewport.mapYinv(p.height, p);
                 const y0 = this.ysnap;
                 for (let n = 2; y0 / n > 1 && y0 / n > yBottom; n++) {
+                  p.stroke((256*Math.log2(n)) % 256, 128, 196);
                   p.line(0, viewport.mapY(y0 / n, p), p.width, viewport.mapY(y0 / n, p));
                 }
             }

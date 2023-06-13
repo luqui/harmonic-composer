@@ -1,5 +1,5 @@
 import p5 from "p5";
-import { Viewport } from "./Viewport";
+import { Viewport, LinearViewport, LogViewport } from "./Viewport";
 import { QuantizationGrid } from "./QuantizationGrid";
 import { NotesView, Player } from "./NotesView";
 
@@ -11,8 +11,9 @@ const sketch = (p: p5) => {
 
   p.setup = () => {
     p.createCanvas(p.windowWidth, p.windowHeight);
-    viewport = new Viewport(0, 32, 40, 1600);
-    grid = new QuantizationGrid(1, 40);
+    // viewport = new LinearViewport(0, 32, 40, 1600);
+    viewport = new LogViewport(0, 1, 40, 127);
+    grid = new QuantizationGrid(1, 216);
     notesView = new NotesView(grid);
     player = null;
   };

@@ -111,11 +111,9 @@ export class NotesView {
   handleMousePressed(p: p5, viewport: Viewport): void {
     for (const note of this.notes) {
         const noteBox = this.getNoteBox(note, p, viewport);
-        console.log(noteBox, p.mouseX, p.mouseY);
         if (noteBox.x0 <= p.mouseX && p.mouseX <= noteBox.xf 
          && noteBox.y0 <= p.mouseY && p.mouseY <= noteBox.yf) {
             if (p.keyIsDown(p.SHIFT)) {
-                console.log("Set Y snap to ", note.pitch);
                 this.quantizationGrid.setYSnap(note.pitch);
             }
             else {
