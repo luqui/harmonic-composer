@@ -117,11 +117,16 @@ export class NotesView {
                 this.quantizationGrid.setYSnap(note.pitch);
             }
             else {
-                this.instrument.playNote(this.getMouseCoords(p,viewport).y, 0.33);
+                this.instrument.playNote(note.pitch, 0.33);
                 this.selectedNote = note;
             }
             return;
         }
+    }
+
+    if (p.keyIsDown(p.SHIFT)) {
+        this.quantizationGrid.setYSnap(this.getMouseCoords(p, viewport).y);
+        return;
     }
 
     const coords = this.getMouseCoords(p, viewport);

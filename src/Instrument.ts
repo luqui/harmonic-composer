@@ -22,7 +22,7 @@ export class Instrument {
         const osc = new p5.Oscillator(freq, 'triangle');
         // @ts-ignore
         const env = new p5.Envelope();
-        env.setADSR(0.05, 1, 0.75, RELEASE_TIME);
+        env.setADSR(0.05, 2, 0.25, RELEASE_TIME);
         osc.start();
         env.triggerAttack(osc, 0);
         this.oscs[freq] = { osc: osc, env: env };
