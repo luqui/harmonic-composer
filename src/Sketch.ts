@@ -112,6 +112,13 @@ const sketch = (p: p5) => {
 
     if (player) {
         player.step(p);
+
+
+        p.colorMode(p.RGB);
+        p.strokeWeight(2);
+        p.stroke(0, 128, 0);
+        p.line(viewport.mapX(player.getPlayhead(p), p), 0, viewport.mapX(player.getPlayhead(p), p), p.height);
+
     }
   };
 };

@@ -42,7 +42,7 @@ export class Player {
         return;
     }
     
-    let t = this.tempo * (p.millis()/1000 - this.startTime);
+    let t = this.getPlayhead(p);
 
     this.playingNotes = this.playingNotes.filter((note: Note) => {
         if (note.endTime < t) {
@@ -79,6 +79,10 @@ export class Player {
       }
       this.playing = false;
       this.playingNotes = [];
+  }
+
+  getPlayhead(p: p5) {
+      return this.tempo * (p.millis()/1000 - this.startTime);
   }
 };
 
