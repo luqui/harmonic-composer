@@ -61,10 +61,16 @@ export class Player {
     }
   }
 
-  play(p: p5) {
+  play(p: p5, t0: number) {
+    this.index = this.notes.findIndex(n => n.startTime >= t0);
+    if (this.index == -1)
+        return;
+
+    if (this.index < this.notes.length) {
+        this.startTime = p.millis() / 1000 - this.notes[this.index].startTime / this.tempo;
+    }
+   
     this.playing = true;
-    this.startTime = p.millis()/1000;
-    this.index = 0;
   }
 
   stop() {
@@ -173,9 +179,9 @@ export class NotesView {
       }
   }
 
-  play(p: p5): Player {
+  play(p: p5, viewport: Viewport): Player {
       const player = new Player(this.notes, 4, this.instrument);
-      player.play(p);
+      player.play(p, viewport.mapXinv(0, p));
       return player;
   }
 
