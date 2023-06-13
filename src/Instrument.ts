@@ -6,8 +6,13 @@ declare var p5: p5mod;
 const RELEASE_TIME : number = 0.02;
 
 export interface Instrument {
+    // Start playing a note at the given frequency.
     startNote(freq: number): void;
+
+    // Stop playing the note at the given frequency in `secondsFromNow` seconds.
     stopNote(freq: number, secondsFromNow: number): void;
+
+    // Play a note at a given frequency and duration.
     playNote(freq: number, duration: number): void;
 }
 
@@ -48,4 +53,92 @@ export class ToneSynth implements Instrument {
         this.startNote(freq);
         this.stopNote(freq, duration);
     }
-};
+}
+
+export class MPEInstrument implements Instrument {
+  private midiOutput: WebMidi.MIDIOutput | null;
+  private availableChannels: number[];
+  private channelMap: Map<number, number>;
+
+  constructor(numChannels = 16) {
+    this.midiOutput = null;
+    this.availableChannels = Array.from({ length: numChannels }, (_, i) => i);
+    this.channelMap = new Map<number, number>();
+
+    this.initializeMidiAccess();
+  }
+
+  private async initializeMidiAccess() {
+    if (!navigator.requestMIDIAccess) {
+      console.warn("Web MIDI API not supported in this browser");
+      return;
+    }
+
+    const midiAccess = await navigator.requestMIDIAccess();
+    if (midiAccess.outputs.size === 0) {
+      console.warn("No MIDI output devices found");
+      return;
+    }
+
+    this.midiOutput = midiAccess.outputs.values().next().value;
+    this.setupPitchBendRange();
+  }
+
+  private setupPitchBendRange() {
+    if (!this.midiOutput) {
+      return;
+    }
+
+    const pitchBendRange = [0, 2];  // +- 2 semitones
+    const pitchBendRangeMSB = pitchBendRange[1];
+
+    for (let channel = 0; channel < this.availableChannels.length; channel++) {
+      this.midiOutput.send([0xB0 + channel, 100, 0]);
+      this.midiOutput.send([0xB0 + channel, 101, 0]);
+      this.midiOutput.send([0xB0 + channel, 6, pitchBendRangeMSB]);
+      this.midiOutput.send([0xB0 + channel, 38, pitchBendRange[0]]);
+    }
+  }
+
+  startNote(freq: number): void {
+    if (!this.midiOutput || this.availableChannels.length === 0) {
+      return;
+    }
+
+    const channel = this.availableChannels.pop()!;
+    this.channelMap.set(freq, channel);
+
+    const [note, pitchBend] = this.frequencyToMidiAndPitchBend(freq);
+    this.midiOutput.send([0x90 + channel, note, 127]);
+    this.midiOutput.send([0xE0 + channel, pitchBend & 0x7F, (pitchBend >> 7) & 0x7F]);
+  }
+
+  stopNote(freq: number, secondsFromNow: number): void {
+    const channel = this.channelMap.get(freq);
+    if (!this.midiOutput || channel === undefined) {
+      return;
+    }
+
+    const [note] = this.frequencyToMidiAndPitchBend(freq);
+    this.midiOutput.send(
+      [0x90 + channel, note, 0],
+      window.performance.now() + secondsFromNow * 1000
+    );
+
+    this.availableChannels.push(channel);
+    this.channelMap.delete(freq);
+  }
+
+  playNote(freq: number, duration: number): void {
+    this.startNote(freq);
+    this.stopNote(freq, duration);
+  }
+
+  private frequencyToMidiAndPitchBend(freq: number): [number, number] {
+    const midiNote = 69 + 12 * Math.log2(freq / 440);
+    const nearestMidi = Math.round(midiNote);
+    const pitchBend = Math.round((midiNote - nearestMidi) * 8191 / 2) + 8192;
+
+    return [nearestMidi, pitchBend];
+  }
+}

@@ -1,7 +1,7 @@
 import p5 from "p5";
 import {QuantizationGrid} from "./QuantizationGrid";
 import {Viewport} from "./Viewport";
-import {ToneSynth, Instrument} from "./Instrument";
+import {ToneSynth, MPEInstrument, Instrument} from "./Instrument";
 import {ExactNumber as N, ExactNumberType} from "exactnumber";
 
 const NOTE_HEIGHT = 10;
@@ -92,7 +92,7 @@ export class NotesView {
     this.isDragging = false;
     this.dragStart = null;
     this.selectedNote = null;
-    this.instrument = new ToneSynth();
+    this.instrument = new MPEInstrument(12);
     this.runningGCD = N("0");
   }
 
