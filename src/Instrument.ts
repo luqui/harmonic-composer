@@ -3,18 +3,22 @@ import * as Tone from "tone";
 
 declare var p5: p5mod;
 
-const CLEANUP_TIME_MS : number = 250;
+const CLEANUP_LATENCY : number = 0.250;
 
 export interface Instrument {
     // Start playing a note at the given frequency and velocity (0-1)
-    startNote(freq: number, velocity: number): void;
+    startNote(when: number, freq: number, velocity: number): void;
 
     // Stop playing the note at the given frequency in `secondsFromNow` seconds.
-    stopNote(freq: number, secondsFromNow: number): void;
+    stopNote(when: number, freq: number): void;
 
     // Play a note at a given frequency and duration.
-    playNote(freq: number, velocity: number, duration: number): void;
+    playNote(when: number, duration: number, freq: number, velocity: number): void;
 }
+
+type Time = number;
+
+Tone.Transport.start();
 
 class AmplitudeControl {
     private osc: Tone.Oscillator;
@@ -28,20 +32,18 @@ class AmplitudeControl {
         osc.connect(this.env);
     }
 
-    triggerAttack(): void {
-        this.env.triggerAttack();
+    triggerAttack(when: Time): void {
+        this.env.triggerAttack(when);
     }
 
-    triggerRelease(): void {
-        this.env.triggerRelease();
+    triggerRelease(when: Time): void {
+        this.env.triggerRelease(when);
         setTimeout(() => {
             this.osc.dispose();
             this.env.dispose();
-        }, 1000*Tone.Time(this.env.release).toSeconds() + CLEANUP_TIME_MS);
+        }, 1000 * (when - Tone.now() + Tone.Time(this.env.release).toSeconds() + CLEANUP_LATENCY));
     }
 }
-
-Tone.Transport.start();
 
 export class ToneSynth implements Instrument {
     private oscs: { [freq: number]: AmplitudeControl };
@@ -50,28 +52,29 @@ export class ToneSynth implements Instrument {
         this.oscs = {};
     }
 
-    startNote(freq: number, velocity: number): void {
-        this.stopNote(freq, 0);
+    startNote(when: number, freq: number, velocity: number): void {
+        this.stopNote(0, freq);
 
         const env = new Tone.AmplitudeEnvelope(0.05, 1, 0.25, 1).toDestination();
         const osc = new Tone.Oscillator(freq, 'triangle').start();
         osc.volume.value = 10 * Math.log2(velocity) - 10;
-        env.triggerAttack();
-        this.oscs[freq] = new AmplitudeControl(osc, env);
+        const amp = new AmplitudeControl(osc, env);
+        amp.triggerAttack(Tone.now());
+        this.oscs[freq] = amp;
     }
 
-    stopNote(freq: number, secondsFromNow: number): void {
+    stopNote(when:number, freq: number): void {
         if (this.oscs[freq]) {
             const osc = this.oscs[freq];
             delete this.oscs[freq];
 
-            osc.triggerRelease();
+            osc.triggerRelease(when);
         }
     }
 
-    playNote(freq: number, velocity: number, duration: number): void {
-        this.startNote(freq, velocity);
-        this.stopNote(freq, duration);
+    playNote(when: number, duration: number, freq: number, velocity: number): void {
+        this.startNote(when, freq, velocity);
+        this.stopNote(when + duration, freq);
     }
 }
 
@@ -119,7 +122,7 @@ export class MPEInstrument implements Instrument {
     }
   }
 
-  startNote(freq: number, velocity: number): void {
+  startNote(when: number, freq: number, velocity: number): void {
     if (!this.midiOutput || this.availableChannels.length === 0) {
       return;
     }
@@ -132,7 +135,7 @@ export class MPEInstrument implements Instrument {
     this.midiOutput.send([0xE0 + channel, pitchBend & 0x7F, (pitchBend >> 7) & 0x7F]);
   }
 
-  stopNote(freq: number, secondsFromNow: number): void {
+  stopNote(when: number, freq: number): void {
     const channel = this.channelMap.get(freq);
     if (!this.midiOutput || channel === undefined) {
       return;
@@ -141,16 +144,16 @@ export class MPEInstrument implements Instrument {
     const [note] = this.frequencyToMidiAndPitchBend(freq);
     this.midiOutput.send(
       [0x90 + channel, note, 0],
-      window.performance.now() + secondsFromNow * 1000
+      window.performance.now() - Tone.now() + when
     );
 
     this.availableChannels.push(channel);
     this.channelMap.delete(freq);
   }
 
-  playNote(freq: number, velocity: number, duration: number): void {
-    this.startNote(freq, velocity);
-    this.stopNote(freq, duration);
+  playNote(when: number, duration: number, freq: number, velocity: number): void {
+    this.startNote(when, freq, velocity);
+    this.stopNote(when + duration, freq);
   }
 
   private frequencyToMidiAndPitchBend(freq: number): [number, number] {
