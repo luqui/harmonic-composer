@@ -1,8 +1,51 @@
 import p5 from "p5";
+import { initializeMidiAccess, MPEInstrument, ToneSynth } from './Instrument';
 import { Viewport, LinearViewport, LogViewport } from "./Viewport";
 import { QuantizationGrid } from "./QuantizationGrid";
 import { NotesView, Player } from "./NotesView";
 import { ExactNumberType, ExactNumber as N } from "exactnumber";
+
+async function createMidiOutputSelect(
+  onMidi: (output: WebMidi.MIDIOutput) => void,
+  onWebSynth: () => void
+) {
+  const outputs = await initializeMidiAccess();
+  const container = document.querySelector<HTMLDivElement>("#output-select-container");
+
+  if (!container) {
+    console.error("Output select container not found");
+    return;
+  }
+
+  const select = document.createElement("select");
+  container.appendChild(select);
+
+  const webSynthOption = document.createElement("option");
+  webSynthOption.value = "web_synth";
+  webSynthOption.textContent = "Web Synth";
+  select.appendChild(webSynthOption);
+
+  outputs.forEach((output: WebMidi.MIDIOutput, outputKey: string) => {
+    const option = document.createElement("option");
+    option.value = outputKey;
+    option.textContent = output.name;
+    select.appendChild(option);
+  });
+
+  select.addEventListener("change", (e) => {
+    const target = e.target as HTMLSelectElement;
+    const outputName = target.value;
+
+    if (outputName === "web_synth") {
+      onWebSynth();
+    } else {
+      const midiOutput = outputs.get(outputName);
+      if (midiOutput) {
+        onMidi(midiOutput);
+      }
+    }
+  });
+}
 
 const sketch = (p: p5) => {
   let viewport: Viewport;
@@ -11,8 +54,7 @@ const sketch = (p: p5) => {
   let player: Player;
 
   p.setup = () => {
-    p.createCanvas(p.windowWidth, p.windowHeight);
-    // viewport = new LinearViewport(0, 32, 40, 1600);
+    p.createCanvas(p.windowWidth, p.windowHeight - 50);
     viewport = new LogViewport(0, 36, 40, 108);
     grid = new QuantizationGrid(1, N("216"));
     notesView = new NotesView(grid);
@@ -30,6 +72,15 @@ const sketch = (p: p5) => {
     window.addEventListener('hashchange', (e:Event) => {
         loadHash();
     });
+    
+    createMidiOutputSelect(
+        (output: WebMidi.MIDIOutput) => {
+            notesView.setInstrument(new MPEInstrument(output, 12));
+        },
+        () => {
+            notesView.setInstrument(new ToneSynth());
+        });
+
   };
 
   p.windowResized = () => {

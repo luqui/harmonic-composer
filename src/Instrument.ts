@@ -55,20 +55,7 @@ export class ToneSynth implements Instrument {
     }
 }
 
-export class MPEInstrument implements Instrument {
-  private midiOutput: WebMidi.MIDIOutput | null;
-  private availableChannels: number[];
-  private channelMap: Map<number, number>;
-
-  constructor(numChannels = 16) {
-    this.midiOutput = null;
-    this.availableChannels = Array.from({ length: numChannels }, (_, i) => i);
-    this.channelMap = new Map<number, number>();
-
-    this.initializeMidiAccess();
-  }
-
-  private async initializeMidiAccess() {
+export async function initializeMidiAccess(): Promise<ReadonlyMap<string, WebMidi.MIDIOutput>> {
     if (!navigator.requestMIDIAccess) {
       console.warn("Web MIDI API not supported in this browser");
       return;
@@ -80,7 +67,19 @@ export class MPEInstrument implements Instrument {
       return;
     }
 
-    this.midiOutput = midiAccess.outputs.values().next().value;
+    return midiAccess.outputs;
+}
+
+export class MPEInstrument implements Instrument {
+  private midiOutput: WebMidi.MIDIOutput;
+  private availableChannels: number[];
+  private channelMap: Map<number, number>;
+
+  constructor(midiOutput: WebMidi.MIDIOutput, numChannels: number) {
+    this.midiOutput = midiOutput;
+    this.availableChannels = Array.from({ length: numChannels }, (_, i) => i);
+    this.channelMap = new Map<number, number>();
+
     this.setupPitchBendRange();
   }
 

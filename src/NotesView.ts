@@ -107,6 +107,10 @@ export class NotesView {
     this.instrument = new ToneSynth();
   }
 
+  setInstrument(instrument: Instrument) {
+      this.instrument = instrument;
+  }
+
   serialize(): Serialized {
       return {
           notes: this.notes.map((n: Note) => ({ 
