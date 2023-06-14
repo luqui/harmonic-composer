@@ -63,9 +63,14 @@ const sketch = (p: p5) => {
     p.frameRate(24);
 
     const loadHash = () => {
-        const jsonStr = Buffer.from(document.location.hash, "base64").toString()
-        const json = JSON.parse(jsonStr);
-        notesView.deserialize(json);
+        try {
+            const jsonStr = Buffer.from(document.location.hash, "base64").toString()
+            const json = JSON.parse(jsonStr);
+            notesView.deserialize(json);
+        }
+        catch (e) {
+            console.log("Loading failed", e);
+        }
     };
 
     loadHash();

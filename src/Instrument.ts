@@ -6,14 +6,14 @@ declare var p5: p5mod;
 const RELEASE_TIME : number = 0.02;
 
 export interface Instrument {
-    // Start playing a note at the given frequency.
-    startNote(freq: number): void;
+    // Start playing a note at the given frequency and velocity (0-1)
+    startNote(freq: number, velocity: number): void;
 
     // Stop playing the note at the given frequency in `secondsFromNow` seconds.
     stopNote(freq: number, secondsFromNow: number): void;
 
     // Play a note at a given frequency and duration.
-    playNote(freq: number, duration: number): void;
+    playNote(freq: number, velocity: number, duration: number): void;
 }
 
 export class ToneSynth implements Instrument {
@@ -24,7 +24,7 @@ export class ToneSynth implements Instrument {
         console.log(p5sound);
     }
 
-    startNote(freq: number): void {
+    startNote(freq: number, velocity: number): void {
         this.stopNote(freq, 0);
 
         // Horrible typescript fighting.
@@ -35,7 +35,7 @@ export class ToneSynth implements Instrument {
         const env = new p5.Envelope();
         env.setADSR(0.05, 2, 0.25, RELEASE_TIME);
         osc.start();
-        env.triggerAttack(osc, 0);
+        env.mult(velocity).triggerAttack(osc, 0);
         this.oscs[freq] = { osc: osc, env: env };
     }
 
@@ -49,8 +49,8 @@ export class ToneSynth implements Instrument {
         }
     }
 
-    playNote(freq: number, duration: number): void {
-        this.startNote(freq);
+    playNote(freq: number, velocity: number, duration: number): void {
+        this.startNote(freq, velocity);
         this.stopNote(freq, duration);
     }
 }
@@ -99,7 +99,7 @@ export class MPEInstrument implements Instrument {
     }
   }
 
-  startNote(freq: number): void {
+  startNote(freq: number, velocity: number): void {
     if (!this.midiOutput || this.availableChannels.length === 0) {
       return;
     }
@@ -108,7 +108,7 @@ export class MPEInstrument implements Instrument {
     this.channelMap.set(freq, channel);
 
     const [note, pitchBend] = this.frequencyToMidiAndPitchBend(freq);
-    this.midiOutput.send([0x90 + channel, note, 127]);
+    this.midiOutput.send([0x90 + channel, note, Math.floor(127*velocity)]);
     this.midiOutput.send([0xE0 + channel, pitchBend & 0x7F, (pitchBend >> 7) & 0x7F]);
   }
 
@@ -128,8 +128,8 @@ export class MPEInstrument implements Instrument {
     this.channelMap.delete(freq);
   }
 
-  playNote(freq: number, duration: number): void {
-    this.startNote(freq);
+  playNote(freq: number, velocity: number, duration: number): void {
+    this.startNote(freq, velocity);
     this.stopNote(freq, duration);
   }
 
