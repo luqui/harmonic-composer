@@ -1,9 +1,9 @@
 import { default as p5mod } from "p5";
-import p5sound from "p5/lib/addons/p5.sound";
+import * as Tone from "tone";
 
 declare var p5: p5mod;
 
-const RELEASE_TIME : number = 0.02;
+const CLEANUP_TIME_MS : number = 250;
 
 export interface Instrument {
     // Start playing a note at the given frequency and velocity (0-1)
@@ -16,27 +16,48 @@ export interface Instrument {
     playNote(freq: number, velocity: number, duration: number): void;
 }
 
+class AmplitudeControl {
+    private osc: Tone.Oscillator;
+    private env: Tone.Envelope;
+    
+    constructor(osc: Tone.Oscillator, envelope: Tone.Envelope)
+    {
+        this.osc = osc;
+        this.env = envelope;
+
+        osc.connect(this.env);
+    }
+
+    triggerAttack(): void {
+        this.env.triggerAttack();
+    }
+
+    triggerRelease(): void {
+        this.env.triggerRelease();
+        setTimeout(() => {
+            this.osc.dispose();
+            this.env.dispose();
+        }, 1000*Tone.Time(this.env.release).toSeconds() + CLEANUP_TIME_MS);
+    }
+}
+
+Tone.Transport.start();
+
 export class ToneSynth implements Instrument {
-    private oscs: { [freq: number]: { osc: p5mod.Oscillator, env: p5mod.Envelope } };
+    private oscs: { [freq: number]: AmplitudeControl };
 
     constructor() {
         this.oscs = {};
-        console.log(p5sound);
     }
 
     startNote(freq: number, velocity: number): void {
         this.stopNote(freq, 0);
 
-        // Horrible typescript fighting.
-
-        // @ts-ignore
-        const osc = new p5.Oscillator(freq, 'triangle');
-        // @ts-ignore
-        const env = new p5.Envelope();
-        env.setADSR(0.05, 2, 0.25, RELEASE_TIME);
-        osc.start();
-        env.mult(velocity).triggerAttack(osc, 0);
-        this.oscs[freq] = { osc: osc, env: env };
+        const env = new Tone.AmplitudeEnvelope(0.05, 1, 0.25, 1).toDestination();
+        const osc = new Tone.Oscillator(freq, 'triangle').start();
+        osc.volume.value = 10 * Math.log2(velocity) - 10;
+        env.triggerAttack();
+        this.oscs[freq] = new AmplitudeControl(osc, env);
     }
 
     stopNote(freq: number, secondsFromNow: number): void {
@@ -44,8 +65,7 @@ export class ToneSynth implements Instrument {
             const osc = this.oscs[freq];
             delete this.oscs[freq];
 
-            osc.env.triggerRelease(osc.osc, secondsFromNow);
-            setTimeout(() => { osc.osc.stop(0) }, (secondsFromNow + RELEASE_TIME) * 1000 + 60);  // 60 ms for the envelope to fully stop
+            osc.triggerRelease();
         }
     }
 
