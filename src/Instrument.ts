@@ -15,7 +15,7 @@ export interface Instrument {
     // Play a note at a given frequency and duration.
     playNote(when: number, duration: number, freq: number, velocity: number): void;
 
-    stopAllNotes(): void;
+    stopAllNotes(when: number): void;
 }
 
 type Time = number;
@@ -79,10 +79,9 @@ export class ToneSynth implements Instrument {
         this.stopNote(when + duration, freq);
     }
 
-    stopAllNotes(): void {
-        const now = Tone.now();
+    stopAllNotes(when: number): void {
         for (const freq in this.oscs) {
-            this.stopNote(now, Number(freq));
+            this.stopNote(when, Number(freq));
         }
     }
 }
@@ -145,7 +144,7 @@ export class MPEInstrument implements Instrument {
       return;
     }
 
-    const whenM = window.performance.now() - 1000 * Tone.now() + 1000*when;
+    const whenM = this.toMidiTime(when);
 
     const channel = this.availableChannels.splice(0, 1)[0];
     this.channelMap.set(freq, channel);
@@ -161,10 +160,8 @@ export class MPEInstrument implements Instrument {
       return;
     }
 
-    const whenM = window.performance.now() - 1000 * Tone.now() + 1000*when;
-
     const [note] = this.frequencyToMidiAndPitchBend(freq);
-    this.midiOutput.send([0x90 + channel, note, 0], whenM);
+    this.midiOutput.send([0x90 + channel, note, 0], this.toMidiTime(when));
 
     this.availableChannels.push(channel);
     this.channelMap.delete(freq);
@@ -175,13 +172,17 @@ export class MPEInstrument implements Instrument {
     this.stopNote(when + duration, freq);
   }
 
-  stopAllNotes() {
+  stopAllNotes(when: number) {
       this.channelMap.forEach((ch, freq) => {
           const [note] = this.frequencyToMidiAndPitchBend(freq);
-          this.midiOutput.send([0x90 + ch, note, 0]);
+          this.midiOutput.send([0x90 + ch, note, 0], this.toMidiTime(when));
       });
       this.channelMap = new Map<number, number>;
       this.availableChannels = Array.from({ length: this.numChannels }, (_, i) => i + 1);
+  }
+
+  private toMidiTime(when: number): number {
+      return window.performance.now() - 1000*Tone.now() + 1000*when;
   }
 
   private frequencyToMidiAndPitchBend(freq: number): [number, number] {

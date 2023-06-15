@@ -28,7 +28,7 @@ class Scheduler {
     private heap: Heap<Event>;
     private time: number;
 
-    private willStop: () => void;
+    private willStop: (when: number) => void;
 
     constructor(resolution: number) {
         this.resolution = resolution;
@@ -39,22 +39,20 @@ class Scheduler {
         this.willStop = null;
     }
 
-    stop(cleanup: () => void): void {
+    stop(cleanup: (when: number) => void): void {
         this.willStop = cleanup;
     }
 
     tick(): void {
-        if (this.time === null) {
-            this.time = Tone.now();
-        }
+        this.time = Tone.now();
+        const nextTime = this.time + this.resolution;
 
         if (this.willStop) {
             this.clock.stop();
-            this.willStop();
+            this.willStop(nextTime);
             return;
         }
 
-        const nextTime = this.time + this.resolution;
         while (true) {
             const event = this.heap.peek();
             if (! event || event.time >= nextTime) {
@@ -106,16 +104,16 @@ export class Player {
             this.scheduler.schedule(this.startTime + (note.startTime - playheadStart) / tempo, (when: number) => {
                 instrument.startNote(when, pitch, note.velocity);
             });
-            this.scheduler.schedule(this.startTime + (note.endTime - playheadStart) / tempo, (when: number) => {
-                instrument.stopNote(when - NOTE_END_EPSILON, pitch);
+            this.scheduler.schedule(this.startTime + (note.endTime - playheadStart) / tempo - NOTE_END_EPSILON, (when: number) => {
+                instrument.stopNote(when, pitch);
             });
         }
     }
   }
 
   stop() {
-      this.scheduler.stop(() => { 
-          this.instrument.stopAllNotes();
+      this.scheduler.stop((when: number) => { 
+          this.instrument.stopAllNotes(when);
       });
   }
 
