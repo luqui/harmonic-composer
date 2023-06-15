@@ -54,7 +54,7 @@ const sketch = (p: p5) => {
   let player: Player;
 
   p.setup = () => {
-    p.createCanvas(p.windowWidth, p.windowHeight - 50);
+    p.createCanvas(p.windowWidth - 50, p.windowHeight - 100);
     viewport = new LogViewport(0, 36, 40, 108);
     grid = new QuantizationGrid(1, N("216"));
     notesView = new NotesView(grid);

@@ -106,9 +106,11 @@ export class MPEInstrument implements Instrument {
   private midiOutput: WebMidi.MIDIOutput;
   private availableChannels: number[];
   private channelMap: Map<number, number>;
+  private numChannels: number;
 
   constructor(midiOutput: WebMidi.MIDIOutput, numChannels: number) {
     this.midiOutput = midiOutput;
+    this.numChannels = numChannels;
     this.availableChannels = Array.from({ length: numChannels }, (_, i) => i);
     this.channelMap = new Map<number, number>();
 
@@ -136,12 +138,14 @@ export class MPEInstrument implements Instrument {
       return;
     }
 
+    const whenM = window.performance.now() - 1000 * Tone.now() + 1000*when;
+
     const channel = this.availableChannels.splice(0, 1)[0];
     this.channelMap.set(freq, channel);
 
     const [note, pitchBend] = this.frequencyToMidiAndPitchBend(freq);
-    this.midiOutput.send([0x90 + channel, note, Math.floor(127*velocity)]);
-    this.midiOutput.send([0xE0 + channel, pitchBend & 0x7F, (pitchBend >> 7) & 0x7F]);
+    this.midiOutput.send([0x90 + channel, note, Math.floor(127*velocity)], whenM);
+    this.midiOutput.send([0xE0 + channel, pitchBend & 0x7F, (pitchBend >> 7) & 0x7F], whenM);
   }
 
   stopNote(when: number, freq: number): void {
@@ -150,11 +154,10 @@ export class MPEInstrument implements Instrument {
       return;
     }
 
+    const whenM = window.performance.now() - 1000 * Tone.now() + 1000*when;
+
     const [note] = this.frequencyToMidiAndPitchBend(freq);
-    this.midiOutput.send(
-      [0x90 + channel, note, 0],
-      window.performance.now() - Tone.now() + when
-    );
+    this.midiOutput.send([0x90 + channel, note, 0], whenM);
 
     this.availableChannels.push(channel);
     this.channelMap.delete(freq);
@@ -166,7 +169,12 @@ export class MPEInstrument implements Instrument {
   }
 
   stopAllNotes() {
-    throw new Error("TODO");
+      this.channelMap.forEach((ch, freq) => {
+          const [note] = this.frequencyToMidiAndPitchBend(freq);
+          this.midiOutput.send([0x90 + ch, note, 0]);
+      });
+      this.channelMap = new Map<number, number>;
+      this.availableChannels = Array.from({ length: this.numChannels }, (_, i) => i);
   }
 
   private frequencyToMidiAndPitchBend(freq: number): [number, number] {
