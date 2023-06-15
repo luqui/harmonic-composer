@@ -327,6 +327,7 @@ export class NotesView {
       else if (p.keyCode == 90)  { // z    -- pivot down
           if (this.selectedNotes.length != 1) {
               alert('Pivot: exactly one note must be selected');
+              return;
           }
           const note = this.selectedNotes[0];
           const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
@@ -338,6 +339,53 @@ export class NotesView {
           }
           else {
               alert('Pivot: selected note must be on grid line');
+              return;
+          }
+      }
+      else if (p.keyCode == 67)  { // c    -- chord
+          if (this.selectedNotes.length == 0) {
+              alert('Chord: at least one note must be selected');
+              return;
+          }
+
+          const startTime = this.selectedNotes[0].startTime;
+          const endTime = this.selectedNotes[0].endTime;
+
+          for (const note of this.selectedNotes) {
+              if (note.startTime != startTime || note.endTime != endTime) {
+                  alert('Chord: if more than one note is selected, they must all have the same time range.  Sorry, not sure what the behavior should be otherwise.');
+                  return;
+              }
+          }
+
+          const ratioString = window.prompt('Enter a ratio string such as 2:3:4', this.getRatioString(this.selectedNotes));
+          if (ratioString === null) {
+              return;
+          }
+
+          let componentStrings = ratioString.split(':');
+          let ratios: number[] = [];
+          for (const component of componentStrings) {
+              if (! component.match(/^\d+$/) || Number(component) == 0) {
+                  alert('Chord: Invalid component ' + component);
+                  return;
+              }
+              ratios.push(Number(component));
+          }
+
+          this.selectedNotes.sort((a,b) => a.pitch.lt(b.pitch) ? -1 : a.pitch.gt(b.pitch) ? 1 : 0);
+          const base = this.selectedNotes[0].pitch.div(ratios[0]);
+          this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
+
+          for (const r of ratios) {
+              const newNote = {
+                  startTime: startTime,
+                  endTime: endTime,
+                  pitch: base.mul(r).normalize(),
+                  velocity: 0.75
+              };
+              this.notes.push(newNote);
+              this.selectedNotes.push(newNote);
           }
       }
   }
@@ -394,6 +442,8 @@ export class NotesView {
 
     if (this.selectedNotes.length >= 2) {
         p.fill(0, 0, 0);
+        p.stroke(0, 0, 0);
+        p.strokeWeight(1);
         p.textAlign(p.RIGHT);
         p.text(this.getRatioString(this.selectedNotes), 0, 10, p.width, 50);
     }
