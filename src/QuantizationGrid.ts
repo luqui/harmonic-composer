@@ -37,10 +37,10 @@ export class QuantizationGrid {
     snapY(y: number): ExactNumberType {
         const yn = N(String(y));
         if (this.ysnap.lte(yn)) {
-            return this.ysnap.mul(this.ysnap.inv().mul(yn).round());
+            return this.ysnap.mul(this.ysnap.inv().mul(yn).round()).normalize();
         }
         else {
-            return this.ysnap.div(this.ysnap.div(yn).round());
+            return this.ysnap.div(this.ysnap.div(yn).round()).normalize();
         }
     }
 

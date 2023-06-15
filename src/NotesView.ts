@@ -236,11 +236,11 @@ export class NotesView {
           const coords = this.getMouseCoords(p, viewport);
           if (coords.x != this.dragStart.x || coords.y != this.dragStart.y) {
               const diffX = coords.x - this.dragStart.x;
-              const diffY = coords.y.div(this.dragStart.y);
+              const diffY = coords.y.div(this.dragStart.y).normalize();
               for (const note of this.selectedNotes) {
                   note.startTime += diffX;
                   note.endTime += diffX;
-                  note.pitch = note.pitch.mul(diffY);
+                  note.pitch = note.pitch.mul(diffY).normalize();
               }
 
               this.dragStart = coords;
@@ -287,13 +287,13 @@ export class NotesView {
       }
       else if (p.keyCode == 71) { // g  -- gcd
           if (this.selectedNotes.length > 0) {
-              const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch), N("0"));
+              const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
               this.quantizationGrid.setYSnap(gcd);
           }
       }
       else if (p.keyCode == 76) { // l  -- lcm
           if (this.selectedNotes.length > 0) {
-              const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch), N("1"));
+              const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
               this.quantizationGrid.setYSnap(lcm);
           }
       }
@@ -312,12 +312,12 @@ export class NotesView {
               alert('Pivot: exactly one note must be selected');
           }
           const note = this.selectedNotes[0];
-          const z = note.pitch.div(this.quantizationGrid.getYSnap());
+          const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
           if (z.isInteger()) {
-              this.quantizationGrid.setYSnap(note.pitch.div(z.add(N("1"))));
+              this.quantizationGrid.setYSnap(note.pitch.div(z.add(N("1"))).normalize());
           }
           else if (z.inv().isInteger()) {
-              this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().sub(N("1"))));
+              this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().sub(N("1"))).normalize());
           }
           else {
               alert('Pivot: selected note must be on grid line');
@@ -329,12 +329,12 @@ export class NotesView {
               alert('Pivot: exactly one note must be selected');
           }
           const note = this.selectedNotes[0];
-          const z = note.pitch.div(this.quantizationGrid.getYSnap());
+          const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
           if (z.inv().isInteger()) {
-              this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().add(N("1"))));
+              this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().add(N("1"))).normalize());
           }
           else if (z.isInteger()) {
-              this.quantizationGrid.setYSnap(note.pitch.div(z.sub(N("1"))));
+              this.quantizationGrid.setYSnap(note.pitch.div(z.sub(N("1"))).normalize());
           }
           else {
               alert('Pivot: selected note must be on grid line');
