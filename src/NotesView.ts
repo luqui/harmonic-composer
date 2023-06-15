@@ -350,6 +350,7 @@ export class NotesView {
       else if (p.keyCode == 65)  { // a    -- pivot up
           if (this.selectedNotes.length != 1) {
               alert('Pivot: exactly one note must be selected');
+              return;
           }
           const note = this.selectedNotes[0];
           const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
@@ -361,6 +362,7 @@ export class NotesView {
           }
           else {
               alert('Pivot: selected note must be on grid line');
+              return;
           }
 
       }
