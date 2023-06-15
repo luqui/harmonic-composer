@@ -76,6 +76,10 @@ class Scheduler {
     }
 }
 
+// Bit of a hack to make it so repeated notes don't futz things up.
+// Doesn't work 100%.
+const NOTE_END_EPSILON = 0.05;
+
 export class Player {
   private notes: Note[];
   private playingNotes: Note[];
@@ -103,7 +107,7 @@ export class Player {
                 instrument.startNote(when, pitch, note.velocity);
             });
             this.scheduler.schedule(this.startTime + (note.endTime - playheadStart) / tempo, (when: number) => {
-                instrument.stopNote(when, pitch);
+                instrument.stopNote(when - NOTE_END_EPSILON, pitch);
             });
         }
     }
