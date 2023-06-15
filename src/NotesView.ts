@@ -356,6 +356,12 @@ export class NotesView {
       }
   }
 
+  getRatioString(notes: Note[]) {
+      const gcd = notes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
+      const nums = notes.map(n => n.pitch.div(gcd).toNumber());
+      return [...new Set(nums)].sort((a,b) => a < b ? -1 : a > b ? 1 : 0).join(':');
+  }
+
   draw(p: p5, viewport: Viewport): void {
     this.handleMouseMoved(p, viewport);
 
@@ -384,6 +390,12 @@ export class NotesView {
 
     for (const note of this.notes) {
         drawNote(note, false);
+    }
+
+    if (this.selectedNotes.length >= 2) {
+        p.fill(0, 0, 0);
+        p.textAlign(p.RIGHT);
+        p.text(this.getRatioString(this.selectedNotes), 0, 10, p.width, 50);
     }
   }
 }
