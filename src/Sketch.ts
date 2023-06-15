@@ -188,9 +188,6 @@ const sketch = (p: p5) => {
     notesView.draw(p, viewport);
 
     if (player) {
-        player.step(p);
-
-
         p.colorMode(p.RGB);
         p.strokeWeight(2);
         p.stroke(0, 128, 0);

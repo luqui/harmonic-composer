@@ -14,6 +14,8 @@ export interface Instrument {
 
     // Play a note at a given frequency and duration.
     playNote(when: number, duration: number, freq: number, velocity: number): void;
+
+    stopAllNotes(): void;
 }
 
 type Time = number;
@@ -59,7 +61,7 @@ export class ToneSynth implements Instrument {
         const osc = new Tone.Oscillator(freq, 'triangle').start();
         osc.volume.value = 10 * Math.log2(velocity) - 10;
         const amp = new AmplitudeControl(osc, env);
-        amp.triggerAttack(Tone.now());
+        amp.triggerAttack(when);
         this.oscs[freq] = amp;
     }
 
@@ -75,6 +77,13 @@ export class ToneSynth implements Instrument {
     playNote(when: number, duration: number, freq: number, velocity: number): void {
         this.startNote(when, freq, velocity);
         this.stopNote(when + duration, freq);
+    }
+
+    stopAllNotes(): void {
+        const now = Tone.now();
+        for (const freq in this.oscs) {
+            this.stopNote(now, Number(freq));
+        }
     }
 }
 
@@ -154,6 +163,10 @@ export class MPEInstrument implements Instrument {
   playNote(when: number, duration: number, freq: number, velocity: number): void {
     this.startNote(when, freq, velocity);
     this.stopNote(when + duration, freq);
+  }
+
+  stopAllNotes() {
+    throw new Error("TODO");
   }
 
   private frequencyToMidiAndPitchBend(freq: number): [number, number] {

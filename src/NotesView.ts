@@ -4,6 +4,7 @@ import {Viewport} from "./Viewport";
 import {ToneSynth, MPEInstrument, Instrument} from "./Instrument";
 import {ExactNumber as N, ExactNumberType} from "exactnumber";
 import * as Tone from "tone";
+import Heap from "heap-js";
 
 const NOTE_HEIGHT = 10;
 
@@ -19,72 +20,89 @@ interface Point {
   y: ExactNumberType;
 }
 
+type Event = { time: number, action: (when: number) => void };
+
+class Scheduler {
+    private clock: Tone.Clock;
+    private resolution: number;
+    private heap: Heap<Event>;
+    private time: number;
+
+    constructor(resolution: number) {
+        this.resolution = resolution;
+        this.clock = new Tone.Clock((when: number) => { this.tick() }, 1/this.resolution);
+        this.clock.start();
+        this.heap = new Heap((a,b) => a.time - b.time);
+        this.time = null;
+    }
+
+    stop(): void {
+        this.clock.stop();
+    }
+
+    tick(): void {
+        if (this.time === null) {
+            this.time = Tone.now();
+        }
+
+        const nextTime = this.time + this.resolution;
+        while (true) {
+            const event = this.heap.peek();
+            if (! event || event.time >= nextTime) {
+                break;
+            }
+            this.heap.pop();
+            event.action(event.time);
+        }
+        this.time = nextTime;
+    }
+
+    schedule(when: number, action: (when: number) => void) {
+        if (when < Tone.now()) {
+            action(Tone.now());
+        }
+        else {
+            this.heap.push({ time: when, action: action });
+        }
+    }
+}
+
 export class Player {
   private notes: Note[];
   private playingNotes: Note[];
-  private playing: boolean;
   private startTime: number;
-  private index: number;
+  private scheduler: Scheduler;
   private instrument: Instrument;
   private tempo: number;
 
   constructor(notes: Note[], tempo: number, instrument: Instrument) {
-    this.notes = [...notes];
-    this.notes.sort((a,b) => 
-        a.startTime < b.startTime ? -1 : a.startTime == b.startTime ? 0 : 1);
+    this.notes = notes;
     this.playingNotes = [];
 
-    this.playing = false;
+    this.scheduler = new Scheduler(0.2);
     this.instrument = instrument;
+
+    this.startTime = Tone.now();
     this.tempo = tempo;
-  }
 
-  step(p: p5) {
-    if (!this.playing) {
-        return;
+    for (const note of this.notes) {
+        const pitch = note.pitch.toNumber();
+        this.scheduler.schedule(this.startTime + note.startTime / tempo, (when: number) => {
+            instrument.startNote(when, pitch, note.velocity);
+        });
+        this.scheduler.schedule(this.startTime + note.endTime / tempo, (when: number) => {
+            instrument.stopNote(when, pitch);
+        });
     }
-    
-    let t = this.getPlayhead(p);
-
-    this.playingNotes = this.playingNotes.filter((note: Note) => {
-        if (note.endTime < t) {
-            this.instrument.stopNote(Tone.now(), note.pitch.toNumber());
-            return false;
-        }
-        else {
-            return true;
-        }
-    });
-
-    while (this.index < this.notes.length && this.notes[this.index].startTime < t) {
-      this.instrument.startNote(Tone.now(), this.notes[this.index].pitch.toNumber(), this.notes[this.index].velocity);
-      this.playingNotes.push(this.notes[this.index]);
-      this.index++;
-    }
-  }
-
-  play(p: p5, t0: number) {
-    this.index = this.notes.findIndex(n => n.startTime >= t0);
-    if (this.index == -1)
-        return;
-
-    if (this.index < this.notes.length) {
-        this.startTime = p.millis() / 1000 - this.notes[this.index].startTime / this.tempo;
-    }
-   
-    this.playing = true;
   }
 
   stop() {
-      for (const n of this.playingNotes) {
-          this.instrument.stopNote(Tone.now(), n.pitch.toNumber());
-      }
-      this.playing = false;
-      this.playingNotes = [];
+      this.scheduler.stop();
+      this.instrument.stopAllNotes();
   }
 
   getPlayhead(p: p5) {
-      return this.tempo * (p.millis()/1000 - this.startTime);
+      return (Tone.now() - this.startTime) * this.tempo;
   }
 };
 
@@ -234,7 +252,6 @@ export class NotesView {
 
   play(p: p5, viewport: Viewport): Player {
       const player = new Player(this.notes, 4, this.instrument);
-      player.play(p, viewport.mapXinv(0, p));
       return player;
   }
 
