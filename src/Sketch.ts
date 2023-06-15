@@ -131,7 +131,6 @@ const sketch = (p: p5) => {
             }
             else {
                 player = notesView.play(p, viewport);
-                console.log("Playing", player);
             }
             break;
         }
