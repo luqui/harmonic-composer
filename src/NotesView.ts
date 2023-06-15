@@ -307,6 +307,39 @@ export class NotesView {
               note.velocity = note.velocity * 0.8 + 1 * 0.2;
           }
       }
+      else if (p.keyCode == 65)  { // a    -- pivot up
+          if (this.selectedNotes.length != 1) {
+              alert('Pivot: exactly one note must be selected');
+          }
+          const note = this.selectedNotes[0];
+          const z = note.pitch.div(this.quantizationGrid.getYSnap());
+          if (z.isInteger()) {
+              this.quantizationGrid.setYSnap(note.pitch.div(z.add(N("1"))));
+          }
+          else if (z.inv().isInteger()) {
+              this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().sub(N("1"))));
+          }
+          else {
+              alert('Pivot: selected note must be on grid line');
+          }
+
+      }
+      else if (p.keyCode == 90)  { // z    -- pivot down
+          if (this.selectedNotes.length != 1) {
+              alert('Pivot: exactly one note must be selected');
+          }
+          const note = this.selectedNotes[0];
+          const z = note.pitch.div(this.quantizationGrid.getYSnap());
+          if (z.inv().isInteger()) {
+              this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().add(N("1"))));
+          }
+          else if (z.isInteger()) {
+              this.quantizationGrid.setYSnap(note.pitch.div(z.sub(N("1"))));
+          }
+          else {
+              alert('Pivot: selected note must be on grid line');
+          }
+      }
   }
 
   play(p: p5, viewport: Viewport): Player {
