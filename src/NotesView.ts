@@ -129,6 +129,8 @@ export class NotesView {
   private notes: Note[];
   private isDragging: boolean;
   private dragStart: Point;
+  private isSelecting: boolean;
+  private selectStart: { x: number, y: number };
   private selectedNotes: Note[];
   private instrument: Instrument;
 
@@ -175,6 +177,13 @@ export class NotesView {
     };
   }
 
+  getMouseCoordsUnquantized(p: p5, viewport: Viewport): { x: number, y: number} {
+    return { 
+      x: viewport.mapXinv(p.mouseX, p),
+      y: viewport.mapYinv(p.mouseY, p),
+    };
+  }
+
   getDrawingNote(p: p5, viewport: Viewport): Note {
     const current = this.getMouseCoords(p, viewport);
     return {
@@ -218,6 +227,12 @@ export class NotesView {
         }
     }
 
+    if (p.keyIsDown(p.SHIFT)) {
+        this.isSelecting = true;
+        this.selectStart = this.getMouseCoordsUnquantized(p, viewport);
+        return;
+    }
+
     if (p.keyIsDown(p.OPTION)) {
         this.quantizationGrid.setYSnap(this.getMouseCoords(p, viewport).y);
         return;
@@ -258,7 +273,28 @@ export class NotesView {
         this.selectedNotes = [newNote];
       }
     }
+    else if (this.isSelecting) {
+        this.selectedNotes = this.notes.filter(n => this.isNoteInSelectionBox(p, viewport, n));
+    }
+
+    this.isSelecting = false;
     this.isDragging = false;
+  }
+
+  isNoteInSelectionBox(p: p5, viewport: Viewport, note: Note) {
+      const boxEnd = this.getMouseCoordsUnquantized(p, viewport);
+      const minX = Math.min(this.selectStart.x, boxEnd.x);
+      const maxX = Math.max(this.selectStart.x, boxEnd.x);
+      const minY = Math.min(this.selectStart.y, boxEnd.y);
+      const maxY = Math.max(this.selectStart.y, boxEnd.y);
+
+      const intervalIntersects = (a1: number, b1: number, a2: number, b2:number) => {
+          return ! (a2 > b1 || a1 > b2);
+      };
+
+      const pitch = note.pitch.toNumber();
+      return (intervalIntersects(minX, maxX, note.startTime, note.endTime) 
+              && intervalIntersects(minY, maxY, pitch, pitch));
   }
 
   handleKeyPressed(p: p5, viewport: Viewport): void {
@@ -438,6 +474,16 @@ export class NotesView {
 
     for (const note of this.notes) {
         drawNote(note, false);
+    }
+
+    if (this.isSelecting) {
+        const boxEnd = this.getMouseCoordsUnquantized(p, viewport);
+        p.strokeWeight(2);
+        p.stroke(255, 128, 0);
+        p.fill(255, 128, 0, 128);
+        const x0 = viewport.mapX(this.selectStart.x, p);
+        const y0 = viewport.mapY(this.selectStart.y, p)
+        p.rect(x0, y0, viewport.mapX(boxEnd.x, p) - x0, viewport.mapY(boxEnd.y, p) - y0);
     }
 
     if (this.selectedNotes.length >= 2) {
