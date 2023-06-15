@@ -102,6 +102,7 @@ export async function initializeMidiAccess(): Promise<ReadonlyMap<string, WebMid
     return midiAccess.outputs;
 }
 
+const PITCH_BEND_RANGE = 2;
 export class MPEInstrument implements Instrument {
   private midiOutput: WebMidi.MIDIOutput;
   private availableChannels: number[];
@@ -122,14 +123,11 @@ export class MPEInstrument implements Instrument {
       return;
     }
 
-    const pitchBendRange = [0, 2];  // +- 2 semitones
-    const pitchBendRangeMSB = pitchBendRange[1];
-
     for (let channel = 0; channel < this.availableChannels.length; channel++) {
       this.midiOutput.send([0xB0 + channel, 100, 0]);
       this.midiOutput.send([0xB0 + channel, 101, 0]);
-      this.midiOutput.send([0xB0 + channel, 6, pitchBendRangeMSB]);
-      this.midiOutput.send([0xB0 + channel, 38, pitchBendRange[0]]);
+      this.midiOutput.send([0xB0 + channel, 6, PITCH_BEND_RANGE]);
+      this.midiOutput.send([0xB0 + channel, 38, 0]);  // pitch bend range LSB
     }
   }
 
@@ -180,7 +178,7 @@ export class MPEInstrument implements Instrument {
   private frequencyToMidiAndPitchBend(freq: number): [number, number] {
     const midiNote = 69 + 12 * Math.log2(freq / 440);
     const nearestMidi = Math.round(midiNote);
-    const pitchBend = Math.round((midiNote - nearestMidi) * 8191 / 2) + 8192;
+    const pitchBend = Math.round((midiNote - nearestMidi) * 8191 / PITCH_BEND_RANGE) + 8192;
 
     return [nearestMidi, pitchBend];
   }
