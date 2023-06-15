@@ -92,7 +92,6 @@ const sketch = (p: p5) => {
     p.resizeCanvas(p.windowWidth, p.windowHeight);
   };
 
-
   p.mousePressed = () => {
     notesView.handleMousePressed(p, viewport);
   };
@@ -102,7 +101,7 @@ const sketch = (p: p5) => {
   };
 
   p.keyPressed = () => {
-    notesView.handleKeyPressed(p);
+    notesView.handleKeyPressed(p, viewport);
 
     const subdivKey = (subdiv: ExactNumberType) => {
         if (p.keyIsDown(p.CONTROL)) {

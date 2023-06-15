@@ -112,18 +112,27 @@ export class MPEInstrument implements Instrument {
   constructor(midiOutput: WebMidi.MIDIOutput, numChannels: number) {
     this.midiOutput = midiOutput;
     this.numChannels = numChannels;
-    this.availableChannels = Array.from({ length: numChannels }, (_, i) => i);
+    this.availableChannels = Array.from({ length: numChannels }, (_, i) => i+1);
     this.channelMap = new Map<number, number>();
 
-    this.setupPitchBendRange();
+    this.setupMPE();
   }
 
-  private setupPitchBendRange() {
+  private setupMPE() {
     if (!this.midiOutput) {
       return;
     }
 
-    for (let channel = 0; channel < this.availableChannels.length; channel++) {
+    // Turn off omni mode.
+    this.midiOutput.send([0xB0, 0x7D, 0x00]);
+
+    const minChannel = 2;
+    const maxChannel = minChannel + this.numChannels - 1;
+    this.midiOutput.send([0xB0, 0x65, 0x00]); // RPN LSB (Set RPN address 0x0002)
+    this.midiOutput.send([0xB0, 0x64, 0x02]); // RPN MSB (Set RPN address 0x0002)
+    this.midiOutput.send([0xB0, 0x06, maxChannel]); // Data Entry MSB (Assign max channel to lower zone)
+
+    for (let channel = 0; channel < this.numChannels; channel++) {
       this.midiOutput.send([0xB0 + channel, 100, 0]);
       this.midiOutput.send([0xB0 + channel, 101, 0]);
       this.midiOutput.send([0xB0 + channel, 6, PITCH_BEND_RANGE]);
@@ -172,7 +181,7 @@ export class MPEInstrument implements Instrument {
           this.midiOutput.send([0x90 + ch, note, 0]);
       });
       this.channelMap = new Map<number, number>;
-      this.availableChannels = Array.from({ length: this.numChannels }, (_, i) => i);
+      this.availableChannels = Array.from({ length: this.numChannels }, (_, i) => i + 1);
   }
 
   private frequencyToMidiAndPitchBend(freq: number): [number, number] {

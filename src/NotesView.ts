@@ -186,6 +186,12 @@ export class NotesView {
   }
 
   handleMousePressed(p: p5, viewport: Viewport): void {
+    if (this.isDragging) {
+        this.isDragging = false;
+        this.dragStart = null;
+        return;
+    }
+
     for (const note of this.notes) {
         const noteBox = this.getNoteBox(note, p, viewport);
         if (noteBox.x0 <= p.mouseX && p.mouseX <= noteBox.xf 
@@ -199,8 +205,14 @@ export class NotesView {
                     this.selectedNotes.push(note);
                 }
             }
-            else {
+            else if (! this.selectedNotes.includes(note)) {
                 this.selectedNotes = [note];
+            }
+
+            // Start moving drag
+            if (this.selectedNotes.includes(note)) {
+                this.isDragging = true;
+                this.dragStart = this.getMouseCoords(p, viewport);
             }
             return;
         }
@@ -211,14 +223,33 @@ export class NotesView {
         return;
     }
 
+    // Start note creation drag
     const coords = this.getMouseCoords(p, viewport);
     this.instrument.startNote(Tone.now(), coords.y.toNumber(), 0.75);
     this.isDragging = true;
+    this.selectedNotes = [];
     this.dragStart = this.getMouseCoords(p, viewport);
   }
 
+  handleMouseMoved(p: p5, viewport: Viewport): void {
+      if (this.isDragging && this.selectedNotes.length > 0) {
+          const coords = this.getMouseCoords(p, viewport);
+          if (coords.x != this.dragStart.x || coords.y != this.dragStart.y) {
+              const diffX = coords.x - this.dragStart.x;
+              const diffY = coords.y.div(this.dragStart.y);
+              for (const note of this.selectedNotes) {
+                  note.startTime += diffX;
+                  note.endTime += diffX;
+                  note.pitch = note.pitch.mul(diffY);
+              }
+
+              this.dragStart = coords;
+          }
+      }
+  }
+
   handleMouseReleased(p: p5, viewport: Viewport): void {
-    if (this.isDragging) {
+    if (this.isDragging && this.selectedNotes.length == 0) {
       const newNote = this.getDrawingNote(p, viewport);
       this.instrument.stopNote(Tone.now(), newNote.pitch.toNumber());
 
@@ -230,7 +261,7 @@ export class NotesView {
     this.isDragging = false;
   }
 
-  handleKeyPressed(p: p5): void {
+  handleKeyPressed(p: p5, viewport: Viewport): void {
       if (p.keyCode === p.ESCAPE) {
           this.selectedNotes = [];
           this.isDragging = false;
@@ -239,6 +270,20 @@ export class NotesView {
       else if (p.keyCode === p.BACKSPACE) {
           this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
           this.selectedNotes = [];
+      }
+      else if (p.keyCode == 68) { // d  -- duplicate
+          if (this.selectedNotes.length > 0) {
+              for (const n of this.selectedNotes) {
+                  this.notes.push({
+                      startTime: n.startTime,
+                      endTime: n.endTime,
+                      pitch: n.pitch,
+                      velocity: n.velocity,
+                  });
+              }
+              this.isDragging = true;
+              this.dragStart = this.getMouseCoords(p, viewport);
+          }
       }
       else if (p.keyCode == 71) { // g  -- gcd
           if (this.selectedNotes.length > 0) {
@@ -279,6 +324,8 @@ export class NotesView {
   }
 
   draw(p: p5, viewport: Viewport): void {
+    this.handleMouseMoved(p, viewport);
+
     p.colorMode(p.RGB);
     const drawNote = (note: Note, current: boolean) => {
       let v = note.velocity;
