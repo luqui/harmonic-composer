@@ -28,21 +28,30 @@ class Scheduler {
     private heap: Heap<Event>;
     private time: number;
 
+    private willStop: () => void;
+
     constructor(resolution: number) {
         this.resolution = resolution;
         this.clock = new Tone.Clock((when: number) => { this.tick() }, 1/this.resolution);
         this.clock.start();
         this.heap = new Heap((a,b) => a.time - b.time);
         this.time = null;
+        this.willStop = null;
     }
 
-    stop(): void {
-        this.clock.stop();
+    stop(cleanup: () => void): void {
+        this.willStop = cleanup;
     }
 
     tick(): void {
         if (this.time === null) {
             this.time = Tone.now();
+        }
+
+        if (this.willStop) {
+            this.clock.stop();
+            this.willStop();
+            return;
         }
 
         const nextTime = this.time + this.resolution;
@@ -71,11 +80,12 @@ export class Player {
   private notes: Note[];
   private playingNotes: Note[];
   private startTime: number;
+  private playheadStart: number;
   private scheduler: Scheduler;
   private instrument: Instrument;
   private tempo: number;
 
-  constructor(notes: Note[], tempo: number, instrument: Instrument) {
+  constructor(notes: Note[], tempo: number, instrument: Instrument, playheadStart: number) {
     this.notes = notes;
     this.playingNotes = [];
 
@@ -83,26 +93,30 @@ export class Player {
     this.instrument = instrument;
 
     this.startTime = Tone.now();
+    this.playheadStart = playheadStart;
     this.tempo = tempo;
 
     for (const note of this.notes) {
         const pitch = note.pitch.toNumber();
-        this.scheduler.schedule(this.startTime + note.startTime / tempo, (when: number) => {
-            instrument.startNote(when, pitch, note.velocity);
-        });
-        this.scheduler.schedule(this.startTime + note.endTime / tempo, (when: number) => {
-            instrument.stopNote(when, pitch);
-        });
+        if (note.startTime >= playheadStart) {
+            this.scheduler.schedule(this.startTime + (note.startTime - playheadStart) / tempo, (when: number) => {
+                instrument.startNote(when, pitch, note.velocity);
+            });
+            this.scheduler.schedule(this.startTime + (note.endTime - playheadStart) / tempo, (when: number) => {
+                instrument.stopNote(when, pitch);
+            });
+        }
     }
   }
 
   stop() {
-      this.scheduler.stop();
-      this.instrument.stopAllNotes();
+      this.scheduler.stop(() => { 
+          this.instrument.stopAllNotes();
+      });
   }
 
   getPlayhead(p: p5) {
-      return (Tone.now() - this.startTime) * this.tempo;
+      return (Tone.now() - this.startTime) * this.tempo + this.playheadStart;
   }
 };
 
@@ -251,7 +265,7 @@ export class NotesView {
   }
 
   play(p: p5, viewport: Viewport): Player {
-      const player = new Player(this.notes, 4, this.instrument);
+      const player = new Player(this.notes, 4, this.instrument, viewport.mapXinv(0, p));
       return player;
   }
 
