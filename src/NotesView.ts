@@ -174,9 +174,8 @@ class CommandRunner {
         this.commands = [];
     }
 
-    private initState(command: Command): CommandState {
-        let state: CommandState = null;
-        const promise = command({
+    private initState(command: { command: Command, state: CommandState} ){
+        command.command({
             listen: <T>(hooks: CommandHooks<() => CommandStatus<T>>) => new Promise((resolve, reject) => {
                     const hookMap = (cb: () => CommandStatus<T>) => () => {
                         const status = cb();
@@ -185,24 +184,24 @@ class CommandRunner {
                         return mapStatus((x: T) => {
                             // @ts-ignore
                             resolve(x);
-                            return state;
+                            return command.state;
                         }, status);
                     };
-                    state = mapHooks(hookMap, hooks);
+                    command.state = mapHooks(hookMap, hooks);
                 }),
         }).then(() => {
             // Start over when finished.
-            state = this.initState(command);
+            this.initState(command);
         });
-
-        return state;
     }
 
     register(description: string, command: Command) {
-        this.commands.push({
+        const cs = {
             command: command,
-            state: this.initState(command),
-        });
+            state: {},
+        };
+        this.initState(cs);
+        this.commands.push(cs);
     }
 
     dispatch(hook: keyof CommandHooks<void>, p: p5, viewport: Viewport) {
@@ -213,7 +212,7 @@ class CommandRunner {
                     case 'REPEAT':
                         break;  // no change
                     case 'CANCEL':
-                        c.state = this.initState(c.command);
+                        this.initState(c);
                         break;
                     case 'PROCEED':
                         break;  // no change
