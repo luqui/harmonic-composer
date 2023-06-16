@@ -122,6 +122,110 @@ export class Player {
   }
 };
 
+type CommandHooks<T> = { 
+    keyDown?: T,
+    keyUp?: T,
+    mouseDown?: T,
+    mouseUp?: T,
+    step?: T,
+}
+
+function mapHooks<A,B>(f: (x:A) => B, hooks: CommandHooks<A>): CommandHooks<B> {
+    let ret : CommandHooks<B> = {};
+    if ('keyDown' in hooks)   ret['keyDown']   = f(hooks['keyDown']);
+    if ('keyUp' in hooks)     ret['keyUp']     = f(hooks['keyUp']);
+    if ('mouseDown' in hooks) ret['mouseDown'] = f(hooks['mouseDown']);
+    if ('mouseUp' in hooks)   ret['mouseUp']   = f(hooks['mouseUp']);
+    if ('step' in hooks)      ret['step']      = f(hooks['step']);
+    return ret;
+}
+
+
+type CommandStatus<T> =
+    { control: 'REPEAT' } |
+    { control: 'CANCEL' } |
+    { control: 'PROCEED', value: T } |
+    { control: 'CONSUME', value: T };
+
+function mapStatus<A,B> (f: (x:A) => B, status:CommandStatus<A>): CommandStatus<B> {
+    if (status.control == 'CONSUME' || status.control == 'PROCEED') { 
+        return { control: status.control, value: f(status.value) };
+    }
+    else {
+        return status;
+    }
+}
+
+interface CommandContext {
+    listen<T>(hooks: CommandHooks<() => CommandStatus<T>>): Promise<T>;
+}
+
+type Command = (cx: CommandContext) => Promise<void>;
+
+type CommandState = CommandHooks<() => CommandStatus<CommandState>>;
+
+class CommandRunner {
+    private commands: { 
+        command: Command, 
+        state: CommandState,
+    }[];
+
+    constructor() {
+        this.commands = [];
+    }
+
+    private initState(command: Command): CommandState {
+        let state: CommandState = null;
+        const promise = command({
+            listen: <T>(hooks: CommandHooks<() => CommandStatus<T>>) => new Promise((resolve, reject) => {
+                    const hookMap = (cb: () => CommandStatus<T>) => () => {
+                        const status = cb();
+
+                        // status is e.g. PROCEED 42
+                        return mapStatus((x: T) => {
+                            // @ts-ignore
+                            resolve(x);
+                            return state;
+                        }, status);
+                    };
+                    state = mapHooks(hookMap, hooks);
+                }),
+        }).then(() => {
+            // Start over when finished.
+            state = this.initState(command);
+        });
+
+        return state;
+    }
+
+    register(command: Command) {
+        this.commands.push({
+            command: command,
+            state: this.initState(command),
+        });
+    }
+
+    dispatch(hook: keyof CommandHooks<void>) {
+        for (const c of this.commands) {
+            if (hook in c.state) {
+                const status = c.state[hook]();
+                switch (status.control) {
+                    case 'REPEAT':
+                        break;  // no change
+                    case 'CANCEL':
+                        c.state = this.initState(c.command);
+                        break;
+                    case 'PROCEED':
+                        break;  // no change
+                    case 'CONSUME':
+                        return; // stop processing this event.
+                }
+            }
+        }
+    }
+}
+
+
 type SerializedNote = { startTime: number, endTime: number, pitch: string, velocity: number };
 type Serialized = { notes: SerializedNote[] };
 
