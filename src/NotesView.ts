@@ -1,6 +1,6 @@
 import p5 from "p5";
 import {QuantizationGrid} from "./QuantizationGrid";
-import {Viewport} from "./Viewport";
+import {Viewport, LogViewport, LinearViewport} from "./Viewport";
 import {ToneSynth, MPEInstrument, Instrument} from "./Instrument";
 import {ExactNumber as N, ExactNumberType} from "exactnumber";
 import * as Tone from "tone";
@@ -117,26 +117,26 @@ export class Player {
       });
   }
 
-  getPlayhead(p: p5) {
+  getPlayhead(): number {
       return (Tone.now() - this.startTime) * this.tempo + this.playheadStart;
   }
 };
 
 type CommandHooks<T> = { 
-    keyDown?: (p: p5, viewport: Viewport) => T,
-    keyUp?: (p: p5, viewport: Viewport) => T,
-    mouseDown?: (p: p5, viewport: Viewport) => T,
-    mouseUp?: (p: p5, viewport: Viewport) => T,
-    step?: (p: p5, viewport: Viewport) => T,
+    keyDown?: T,
+    keyUp?: T,
+    mouseDown?: T,
+    mouseUp?: T,
+    step?: T,
 }
 
 function mapHooks<A,B>(f: (x:A) => B, hooks: CommandHooks<A>): CommandHooks<B> {
     let ret : CommandHooks<B> = {};
-    if ('keyDown' in hooks)   ret['keyDown']   = (p: p5, viewport: Viewport) => f(hooks['keyDown'](p, viewport));
-    if ('keyUp' in hooks)   ret['keyUp']   = (p: p5, viewport: Viewport) => f(hooks['keyUp'](p, viewport));
-    if ('mouseDown' in hooks)   ret['mouseDown']   = (p: p5, viewport: Viewport) => f(hooks['mouseDown'](p, viewport));
-    if ('mouseUp' in hooks)   ret['mouseUp']   = (p: p5, viewport: Viewport) => f(hooks['mouseUp'](p, viewport));
-    if ('step' in hooks)   ret['step']   = (p: p5, viewport: Viewport) => f(hooks['step'](p, viewport));
+    if ('keyDown' in hooks)   ret['keyDown']   = f(hooks['keyDown']);
+    if ('keyUp' in hooks)     ret['keyUp']     = f(hooks['keyUp']);
+    if ('mouseDown' in hooks) ret['mouseDown'] = f(hooks['mouseDown']);
+    if ('mouseUp' in hooks)   ret['mouseUp']   = f(hooks['mouseUp']);
+    if ('step' in hooks)      ret['step']      = f(hooks['step']);
     return ret;
 }
 
@@ -182,9 +182,9 @@ class CommandContext {
         });
     }
 
-    waitKey(keyCode: number): Promise<null> {
+    waitKey(p: p5, keyCode: number): Promise<null> {
         return this.listen({
-            'keyDown': (p: p5, viewport: Viewport) => () => {
+            'keyDown': () => {
                 if (p.keyCode == keyCode) { 
                     return { control: 'CONSUME', value: null };
                 }
@@ -192,12 +192,6 @@ class CommandContext {
                     return { control: 'REPEAT' };
                 }
             }
-        });
-    }
-
-    getP5(): Promise<[p5, Viewport]> {
-        return this.listen({
-            'step': (p: p5, viewport: Viewport) => () => ({ control: 'PROCEED', value: [p, viewport] })
         });
     }
 }
@@ -232,10 +226,10 @@ class CommandRunner {
         this.commands.push(cs);
     }
 
-    dispatch(hook: keyof CommandHooks<void>, p: p5, viewport: Viewport) {
+    dispatch(hook: keyof CommandHooks<void>) {
         for (const c of this.commands) {
             if (hook in c.state) {
-                const status = c.state[hook](p, viewport)();
+                const status = c.state[hook]();
                 if (status === null)
                     continue;
                 switch (status.control) {
@@ -260,7 +254,9 @@ type Serialized = { notes: SerializedNote[] };
 
 
 export class NotesView {
+  private p5: p5;
   private quantizationGrid: QuantizationGrid;
+  private viewport: Viewport;
   private notes: Note[];
   private isDragging: boolean;
   private dragStart: Point;
@@ -270,8 +266,10 @@ export class NotesView {
   private instrument: Instrument;
   private commands: CommandRunner;
 
-  constructor(quantizationGrid: QuantizationGrid) {
-    this.quantizationGrid = quantizationGrid;
+  constructor(p: p5) {
+    this.p5 = p;
+    this.viewport = new LogViewport(0, 36, 40, 108);
+    this.quantizationGrid = new QuantizationGrid(1, N("216"));
     this.notes = [];
     this.isDragging = false;
     this.dragStart = null;
@@ -309,22 +307,22 @@ export class NotesView {
       this.selectedNotes = [];
   }
 
-  getMouseCoords(p: p5, viewport: Viewport): Point {
+  getMouseCoords(): Point {
     return { 
-      x: this.quantizationGrid.snapX(viewport.mapXinv(p.mouseX, p)),
-      y: this.quantizationGrid.snapY(viewport.mapYinv(p.mouseY, p))
+      x: this.quantizationGrid.snapX(this.viewport.mapXinv(this.p5.mouseX, this.p5)),
+      y: this.quantizationGrid.snapY(this.viewport.mapYinv(this.p5.mouseY, this.p5))
     };
   }
 
-  getMouseCoordsUnquantized(p: p5, viewport: Viewport): { x: number, y: number} {
+  getMouseCoordsUnquantized(): { x: number, y: number} {
     return { 
-      x: viewport.mapXinv(p.mouseX, p),
-      y: viewport.mapYinv(p.mouseY, p),
+      x: this.viewport.mapXinv(this.p5.mouseX, this.p5),
+      y: this.viewport.mapYinv(this.p5.mouseY, this.p5),
     };
   }
 
-  getDrawingNote(p: p5, viewport: Viewport): Note {
-    const current = this.getMouseCoords(p, viewport);
+  getDrawingNote(): Note {
+    const current = this.getMouseCoords();
     return {
       startTime: Math.min(this.dragStart.x, current.x),
       endTime: Math.max(this.dragStart.x, current.x),
@@ -333,7 +331,7 @@ export class NotesView {
     };
   }
 
-  handleMousePressed(p: p5, viewport: Viewport): void {
+  handleMousePressed(): void {
     if (this.isDragging) {
         this.isDragging = false;
         this.dragStart = null;
@@ -341,11 +339,11 @@ export class NotesView {
     }
 
     for (const note of this.notes) {
-        const noteBox = this.getNoteBox(note, p, viewport);
-        if (noteBox.x0 <= p.mouseX && p.mouseX <= noteBox.xf 
-         && noteBox.y0 <= p.mouseY && p.mouseY <= noteBox.yf) {
+        const noteBox = this.getNoteBox(note,);
+        if (noteBox.x0 <= this.p5.mouseX && this.p5.mouseX <= noteBox.xf 
+         && noteBox.y0 <= this.p5.mouseY && this.p5.mouseY <= noteBox.yf) {
             this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
-            if (p.keyIsDown(p.SHIFT)) {
+            if (this.p5.keyIsDown(this.p5.SHIFT)) {
                 if (this.selectedNotes.includes(note)) {
                     this.selectedNotes = this.selectedNotes.filter(n => n != note);
                 }
@@ -360,34 +358,34 @@ export class NotesView {
             // Start moving drag
             if (this.selectedNotes.includes(note)) {
                 this.isDragging = true;
-                this.dragStart = this.getMouseCoords(p, viewport);
+                this.dragStart = this.getMouseCoords();
             }
             return;
         }
     }
 
-    if (p.keyIsDown(p.SHIFT)) {
+    if (this.p5.keyIsDown(this.p5.SHIFT)) {
         this.isSelecting = true;
-        this.selectStart = this.getMouseCoordsUnquantized(p, viewport);
+        this.selectStart = this.getMouseCoordsUnquantized();
         return;
     }
 
-    if (p.keyIsDown(p.OPTION)) {
-        this.quantizationGrid.setYSnap(this.getMouseCoords(p, viewport).y);
+    if (this.p5.keyIsDown(this.p5.OPTION)) {
+        this.quantizationGrid.setYSnap(this.getMouseCoords().y);
         return;
     }
 
     // Start note creation drag
-    const coords = this.getMouseCoords(p, viewport);
+    const coords = this.getMouseCoords();
     this.instrument.startNote(Tone.now(), coords.y.toNumber(), 0.75);
     this.isDragging = true;
     this.selectedNotes = [];
-    this.dragStart = this.getMouseCoords(p, viewport);
+    this.dragStart = this.getMouseCoords();
   }
 
-  handleMouseMoved(p: p5, viewport: Viewport): void {
+  handleMouseMoved(): void {
       if (this.isDragging && this.selectedNotes.length > 0) {
-          const coords = this.getMouseCoords(p, viewport);
+          const coords = this.getMouseCoords();
           if (coords.x != this.dragStart.x || coords.y != this.dragStart.y) {
               const diffX = coords.x - this.dragStart.x;
               const diffY = coords.y.div(this.dragStart.y).normalize();
@@ -402,9 +400,9 @@ export class NotesView {
       }
   }
 
-  handleMouseReleased(p: p5, viewport: Viewport): void {
+  handleMouseReleased(): void {
     if (this.isDragging && this.selectedNotes.length == 0) {
-      const newNote = this.getDrawingNote(p, viewport);
+      const newNote = this.getDrawingNote();
       this.instrument.stopNote(Tone.now(), newNote.pitch.toNumber());
 
       if (newNote.startTime != newNote.endTime) {
@@ -413,15 +411,15 @@ export class NotesView {
       }
     }
     else if (this.isSelecting) {
-        this.selectedNotes = this.notes.filter(n => this.isNoteInSelectionBox(p, viewport, n));
+        this.selectedNotes = this.notes.filter(n => this.isNoteInSelectionBox(n));
     }
 
     this.isSelecting = false;
     this.isDragging = false;
   }
 
-  isNoteInSelectionBox(p: p5, viewport: Viewport, note: Note) {
-      const boxEnd = this.getMouseCoordsUnquantized(p, viewport);
+  isNoteInSelectionBox(note: Note) {
+      const boxEnd = this.getMouseCoordsUnquantized();
       const minX = Math.min(this.selectStart.x, boxEnd.x);
       const maxX = Math.max(this.selectStart.x, boxEnd.x);
       const minY = Math.min(this.selectStart.y, boxEnd.y);
@@ -438,7 +436,7 @@ export class NotesView {
   
   registerCommands() {
       this.commands.register('GCD', async (cx: CommandContext) => {
-          await cx.waitKey(71); // g       
+          await cx.waitKey(this.p5, 71); // g       
           if (this.selectedNotes.length > 0) {
               const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
               this.quantizationGrid.setYSnap(gcd);
@@ -446,7 +444,7 @@ export class NotesView {
       });
 
       this.commands.register('LCM', async (cx: CommandContext) => {
-          await cx.waitKey(76); // l
+          await cx.waitKey(this.p5, 76); // l
           if (this.selectedNotes.length > 0) {
               const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
               this.quantizationGrid.setYSnap(lcm);
@@ -454,27 +452,27 @@ export class NotesView {
       });
       
       this.commands.register('Delete Notes', async (cx: CommandContext) => {
-          await cx.waitKey(8);  // backspace
+          await cx.waitKey(this.p5, 8);  // backspace
           this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
           this.selectedNotes = [];
       });
 
       this.commands.register('Decrease Velocity', async (cx: CommandContext) => {
-          await cx.waitKey(188);  // ,
+          await cx.waitKey(this.p5, 188);  // ,
           for (let note of this.selectedNotes) {
               note.velocity = note.velocity * 0.8 + 0 * 0.2;
           }
       });
 
       this.commands.register('Increase Velocity', async (cx: CommandContext) => {
-          await cx.waitKey(190);  // .
+          await cx.waitKey(this.p5, 190);  // .
           for (let note of this.selectedNotes) {
               note.velocity = note.velocity * 0.8 + 1 * 0.2;
           }
       });
 
       this.commands.register('Shift pitch grid down by 1 harmonic', async (cx: CommandContext) => {
-          await cx.waitKey(65);  // a
+          await cx.waitKey(this.p5, 65);  // a
           if (this.selectedNotes.length != 1) {
               alert('Pivot: exactly one note must be selected');
               return;
@@ -493,7 +491,7 @@ export class NotesView {
       });
 
       this.commands.register('Shift pitch grid up by 1 harmonic', async (cx: CommandContext) => {
-          await cx.waitKey(90);  // z
+          await cx.waitKey(this.p5, 90);  // z
           if (this.selectedNotes.length != 1) {
               alert('Pivot: exactly one note must be selected');
               return;
@@ -512,7 +510,7 @@ export class NotesView {
       });
 
       this.commands.register('Construct chord', async (cx: CommandContext) => {
-          await cx.waitKey(67);   // c
+          await cx.waitKey(this.p5, 67);   // c
           if (this.selectedNotes.length == 0) {
               alert('Chord: at least one note must be selected');
               return;
@@ -561,36 +559,100 @@ export class NotesView {
   }
 
 
-  handleKeyPressed(p: p5, viewport: Viewport): void {
-      this.commands.dispatch('keyDown', p, viewport);
+  handleKeyPressed(): void {
+      this.commands.dispatch('keyDown');
 
-      if (p.keyCode == 68) { // d  -- duplicate
-          if (this.selectedNotes.length > 0) {
-              for (const n of this.selectedNotes) {
-                  this.notes.push({
-                      startTime: n.startTime,
-                      endTime: n.endTime,
-                      pitch: n.pitch,
-                      velocity: n.velocity,
-                  });
+      const subdivKey = (subdiv: ExactNumberType) => {
+          if (this.p5.keyIsDown(this.p5.CONTROL)) {
+              if (this.p5.keyIsDown(this.p5.SHIFT)) {
+                  this.quantizationGrid.setXSnap(this.quantizationGrid.getXSnap() * subdiv.toNumber());
               }
-              this.isDragging = true;
-              this.dragStart = this.getMouseCoords(p, viewport);
+              else {
+                  this.quantizationGrid.setXSnap(this.quantizationGrid.getXSnap() / subdiv.toNumber());
+              }
+          }
+          else {
+              if (this.p5.keyIsDown(this.p5.SHIFT)) {
+                  this.quantizationGrid.setYSnap(this.quantizationGrid.getYSnap().mul(subdiv));
+              }
+              else {
+                  this.quantizationGrid.setYSnap(this.quantizationGrid.getYSnap().div(subdiv));
+              }
+          }
+      };
+
+      switch (this.p5.keyCode) {
+          case 37: { // <-
+              this.viewport.translateX(-0.25);
+              break;
+          }
+          case 39: { // ->
+              this.viewport.translateX(0.25);
+              break;
+          }
+          case 38: { // ^
+              this.viewport.translateY(0.25);
+              break;
+          }
+          case 40: { // v
+              this.viewport.translateY(-0.25);
+              break;
+          }
+          case 86: { // 'v'
+              const xmin = this.viewport.mapXinv(0, this.p5);
+              const xmax = this.viewport.mapXinv(this.p5.width, this.p5);
+              const ymin = this.viewport.mapYinv(this.p5.height, this.p5);
+              const ymax = this.viewport.mapYinv(0, this.p5);
+              if (this.viewport instanceof LogViewport) {
+                  this.viewport = new LinearViewport(xmin, ymin, xmax, ymax);
+              }
+              else {
+                  const noteMin = ymin < 0 ? 1 : 12 * Math.log2(ymin / 440) + 69;
+                  const noteMax = ymax < 0 ? 1 : 12 * Math.log2(ymax / 440) + 69;
+                  this.viewport = new LogViewport(xmin, noteMin, xmax, noteMax); 
+              }
+              break;
+          }
+          case 50: { // 2
+              subdivKey(N('2'));
+              break;
+          }
+          case 51: { // 3
+              subdivKey(N('3'));
+              break;
+          }
+          case 83: {// s -- save
+              if (this.p5.keyIsDown(this.p5.CONTROL)) {
+                  document.location.hash = Buffer.from(JSON.stringify(this.serialize())).toString("base64");
+              }
+          }
+          case 68: { //d -- duplicate
+              if (this.selectedNotes.length > 0) {
+                  for (const n of this.selectedNotes) {
+                      this.notes.push({
+                          startTime: n.startTime,
+                          endTime: n.endTime,
+                          pitch: n.pitch,
+                          velocity: n.velocity,
+                      });
+                  }
+                  this.isDragging = true;
+                  this.dragStart = this.getMouseCoords();
+              }
           }
       }
   }
 
-  play(p: p5, viewport: Viewport): Player {
-      const player = new Player(this.notes, 4, this.instrument, viewport.mapXinv(0, p));
-      return player;
+  play(): Player {
+      return new Player(this.notes, 4, this.instrument, this.viewport.mapXinv(0, this.p5));
   }
 
-  getNoteBox(note: Note, p:p5, viewport: Viewport): { x0: number, y0: number, xf: number, yf: number } {
+  getNoteBox(note: Note): { x0: number, y0: number, xf: number, yf: number } {
       return {
-          x0: viewport.mapX(note.startTime, p),
-          y0: viewport.mapY(note.pitch.toNumber(), p) - NOTE_HEIGHT / 2,
-          xf: viewport.mapX(note.endTime, p), 
-          yf: viewport.mapY(note.pitch.toNumber(), p) + NOTE_HEIGHT / 2
+          x0: this.viewport.mapX(note.startTime, this.p5),
+          y0: this.viewport.mapY(note.pitch.toNumber(), this.p5) - NOTE_HEIGHT / 2,
+          xf: this.viewport.mapX(note.endTime, this.p5), 
+          yf: this.viewport.mapY(note.pitch.toNumber(), this.p5) + NOTE_HEIGHT / 2
       }
   }
 
@@ -600,30 +662,38 @@ export class NotesView {
       return [...new Set(nums)].sort((a,b) => a < b ? -1 : a > b ? 1 : 0).join(':');
   }
 
-  draw(p: p5, viewport: Viewport): void {
-    this.handleMouseMoved(p, viewport);
+  drawPlayhead(playhead: number) {
+      this.p5.colorMode(this.p5.RGB);
+      this.p5.strokeWeight(2);
+      this.p5.stroke(0, 128, 0);
+      this.p5.line(this.viewport.mapX(playhead, this.p5), 0, this.viewport.mapX(playhead, this.p5), this.p5.height);
+  }
+  
+  draw(): void {
+    this.handleMouseMoved();
+    this.quantizationGrid.drawGrid(this.p5, this.viewport);
 
-    p.colorMode(p.RGB);
+    this.p5.colorMode(this.p5.RGB);
     const drawNote = (note: Note, current: boolean) => {
       let v = note.velocity;
 
       if (current || this.selectedNotes.includes(note)) {
-        p.strokeWeight(2);
-        p.stroke(255, 128, 0);
-        p.fill(255*v, 128*v, 0);
+        this.p5.strokeWeight(2);
+        this.p5.stroke(255, 128, 0);
+        this.p5.fill(255*v, 128*v, 0);
       }
       else {
-        p.strokeWeight(1);
-        p.stroke(0, 0, 0);
-        p.fill(0, v*204, v*255);
+        this.p5.strokeWeight(1);
+        this.p5.stroke(0, 0, 0);
+        this.p5.fill(0, v*204, v*255);
       }
 
-      const noteBox = this.getNoteBox(note, p, viewport);
-      p.rect(noteBox.x0, noteBox.y0, noteBox.xf - noteBox.x0, noteBox.yf - noteBox.y0);
+      const noteBox = this.getNoteBox(note);
+      this.p5.rect(noteBox.x0, noteBox.y0, noteBox.xf - noteBox.x0, noteBox.yf - noteBox.y0);
     };
 
     if (this.isDragging) {
-        drawNote(this.getDrawingNote(p, viewport), true);
+        drawNote(this.getDrawingNote(), true);
     }
 
     for (const note of this.notes) {
@@ -631,21 +701,21 @@ export class NotesView {
     }
 
     if (this.isSelecting) {
-        const boxEnd = this.getMouseCoordsUnquantized(p, viewport);
-        p.strokeWeight(2);
-        p.stroke(255, 128, 0);
-        p.fill(255, 128, 0, 128);
-        const x0 = viewport.mapX(this.selectStart.x, p);
-        const y0 = viewport.mapY(this.selectStart.y, p)
-        p.rect(x0, y0, viewport.mapX(boxEnd.x, p) - x0, viewport.mapY(boxEnd.y, p) - y0);
+        const boxEnd = this.getMouseCoordsUnquantized();
+        this.p5.strokeWeight(2);
+        this.p5.stroke(255, 128, 0);
+        this.p5.fill(255, 128, 0, 128);
+        const x0 = this.viewport.mapX(this.selectStart.x, this.p5);
+        const y0 = this.viewport.mapY(this.selectStart.y, this.p5)
+        this.p5.rect(x0, y0, this.viewport.mapX(boxEnd.x, this.p5) - x0, this.viewport.mapY(boxEnd.y, this.p5) - y0);
     }
 
     if (this.selectedNotes.length >= 2) {
-        p.fill(0, 0, 0);
-        p.stroke(0, 0, 0);
-        p.strokeWeight(1);
-        p.textAlign(p.RIGHT);
-        p.text(this.getRatioString(this.selectedNotes), 0, 10, p.width, 50);
+        this.p5.fill(0, 0, 0);
+        this.p5.stroke(0, 0, 0);
+        this.p5.strokeWeight(1);
+        this.p5.textAlign(this.p5.RIGHT);
+        this.p5.text(this.getRatioString(this.selectedNotes), 0, 10, this.p5.width, 50);
     }
   }
 }
