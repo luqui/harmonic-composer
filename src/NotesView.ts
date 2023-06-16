@@ -148,7 +148,10 @@ type CommandStatus<T> =
     { control: 'CONSUME', value: T };
 
 function mapStatus<A,B> (f: (x:A) => B, status:CommandStatus<A>): CommandStatus<B> {
-    if (status.control == 'CONSUME' || status.control == 'PROCEED') { 
+    if (status === null) {
+        return null;
+    }
+    if (status.control === 'CONSUME' || status.control === 'PROCEED') { 
         return { control: status.control, value: f(status.value) };
     }
     else {
@@ -156,40 +159,59 @@ function mapStatus<A,B> (f: (x:A) => B, status:CommandStatus<A>): CommandStatus<
     }
 }
 
-interface CommandContext {
-    listen<T>(hooks: CommandHooks<() => CommandStatus<T>>): Promise<T>;
+class CommandContext {
+    private command: CommandWithState;
+
+    constructor(command: CommandWithState) {
+        this.command = command;
+    }
+
+    listen<T>(hooks: CommandHooks<() => CommandStatus<T>>): Promise<T> {
+        return new Promise((resolve, reject) => {
+            const hookMap = (cb: () => CommandStatus<T>) => () => {
+                const status = cb();
+
+                // status is e.g. PROCEED 42
+                return mapStatus((x: T) => {
+                    // @ts-ignore
+                    resolve(x);
+                    return this.command.state;
+                }, status);
+            };
+            this.command.state = mapHooks(hookMap, hooks);
+        });
+    }
+
+    waitKey(keyCode: number): Promise<null> {
+        return this.listen({
+            'keyDown': (p: p5, viewport: Viewport) => () => {
+                if (p.keyCode == keyCode) { 
+                    return { control: 'CONSUME', value: null };
+                }
+                else {
+                    return { control: 'REPEAT' };
+                }
+            }
+        });
+    }
 }
+
 
 type Command = (cx: CommandContext) => Promise<void>;
 
 type CommandState = CommandHooks<() => CommandStatus<CommandState>>;
 
+type CommandWithState = { command: Command, state: CommandState };
+
 class CommandRunner {
-    private commands: { 
-        command: Command, 
-        state: CommandState,
-    }[];
+    private commands: CommandWithState[];
 
     constructor() {
         this.commands = [];
     }
 
-    private initState(command: { command: Command, state: CommandState} ){
-        command.command({
-            listen: <T>(hooks: CommandHooks<() => CommandStatus<T>>) => new Promise((resolve, reject) => {
-                    const hookMap = (cb: () => CommandStatus<T>) => () => {
-                        const status = cb();
-
-                        // status is e.g. PROCEED 42
-                        return mapStatus((x: T) => {
-                            // @ts-ignore
-                            resolve(x);
-                            return command.state;
-                        }, status);
-                    };
-                    command.state = mapHooks(hookMap, hooks);
-                }),
-        }).then(() => {
+    private initState(command: CommandWithState){
+        command.command(new CommandContext(command)).then(() => {
             // Start over when finished.
             this.initState(command);
         });
@@ -208,6 +230,8 @@ class CommandRunner {
         for (const c of this.commands) {
             if (hook in c.state) {
                 const status = c.state[hook](p, viewport)();
+                if (status === null)
+                    continue;
                 switch (status.control) {
                     case 'REPEAT':
                         break;  // no change
@@ -249,21 +273,26 @@ export class NotesView {
     this.instrument = new ToneSynth();
     this.commands = new CommandRunner();
 
-    this.commands.register('GCD', async (cx: CommandContext) => {
-        await cx.listen({
-            'keyDown': (p: p5, viewport: Viewport) => () => {
-                if (p.keyCode == 71) { // g
-                    return { control: 'CONSUME', value: null as null };
-                }
-                else {
-                    return { control: 'REPEAT' };
-                }
-            }});
-        if (this.selectedNotes.length > 0) {
-            const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
-            this.quantizationGrid.setYSnap(gcd);
-        }
-    });
+    this.registerCommands();
+  }
+  
+  registerCommands() {
+      this.commands.register('GCD', async (cx: CommandContext) => {
+          await cx.waitKey(71); // g       
+          if (this.selectedNotes.length > 0) {
+              const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
+              this.quantizationGrid.setYSnap(gcd);
+          }
+      });
+
+      this.commands.register('LCM', async (cx: CommandContext) => {
+          await cx.waitKey(76); // l
+          if (this.selectedNotes.length > 0) {
+              const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
+              this.quantizationGrid.setYSnap(lcm);
+          }
+      });
+
   }
 
   setInstrument(instrument: Instrument) {
@@ -444,14 +473,6 @@ export class NotesView {
               }
               this.isDragging = true;
               this.dragStart = this.getMouseCoords(p, viewport);
-          }
-      }
-      else if (p.keyCode == 71) { // g  -- gcd
-      }
-      else if (p.keyCode == 76) { // l  -- lcm
-          if (this.selectedNotes.length > 0) {
-              const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
-              this.quantizationGrid.setYSnap(lcm);
           }
       }
       else if (p.keyCode == 188) { // ,   -- decrease velocity
