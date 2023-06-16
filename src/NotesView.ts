@@ -194,6 +194,12 @@ class CommandContext {
             }
         });
     }
+
+    getP5(): Promise<[p5, Viewport]> {
+        return this.listen({
+            'step': (p: p5, viewport: Viewport) => () => ({ control: 'PROCEED', value: [p, viewport] })
+        });
+    }
 }
 
 
@@ -276,25 +282,6 @@ export class NotesView {
     this.registerCommands();
   }
   
-  registerCommands() {
-      this.commands.register('GCD', async (cx: CommandContext) => {
-          await cx.waitKey(71); // g       
-          if (this.selectedNotes.length > 0) {
-              const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
-              this.quantizationGrid.setYSnap(gcd);
-          }
-      });
-
-      this.commands.register('LCM', async (cx: CommandContext) => {
-          await cx.waitKey(76); // l
-          if (this.selectedNotes.length > 0) {
-              const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
-              this.quantizationGrid.setYSnap(lcm);
-          }
-      });
-
-  }
-
   setInstrument(instrument: Instrument) {
       this.instrument = instrument;
   }
@@ -448,44 +435,46 @@ export class NotesView {
       return (intervalIntersects(minX, maxX, note.startTime, note.endTime) 
               && intervalIntersects(minY, maxY, pitch, pitch));
   }
+  
+  registerCommands() {
+      this.commands.register('GCD', async (cx: CommandContext) => {
+          await cx.waitKey(71); // g       
+          if (this.selectedNotes.length > 0) {
+              const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
+              this.quantizationGrid.setYSnap(gcd);
+          }
+      });
 
-  handleKeyPressed(p: p5, viewport: Viewport): void {
-      this.commands.dispatch('keyDown', p, viewport);
-
-      if (p.keyCode === p.ESCAPE) {
-          this.selectedNotes = [];
-          this.isDragging = false;
-          this.dragStart = null;
-      }
-      else if (p.keyCode === p.BACKSPACE) {
+      this.commands.register('LCM', async (cx: CommandContext) => {
+          await cx.waitKey(76); // l
+          if (this.selectedNotes.length > 0) {
+              const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
+              this.quantizationGrid.setYSnap(lcm);
+          }
+      });
+      
+      this.commands.register('Delete Notes', async (cx: CommandContext) => {
+          await cx.waitKey(8);  // backspace
           this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
           this.selectedNotes = [];
-      }
-      else if (p.keyCode == 68) { // d  -- duplicate
-          if (this.selectedNotes.length > 0) {
-              for (const n of this.selectedNotes) {
-                  this.notes.push({
-                      startTime: n.startTime,
-                      endTime: n.endTime,
-                      pitch: n.pitch,
-                      velocity: n.velocity,
-                  });
-              }
-              this.isDragging = true;
-              this.dragStart = this.getMouseCoords(p, viewport);
-          }
-      }
-      else if (p.keyCode == 188) { // ,   -- decrease velocity
+      });
+
+      this.commands.register('Decrease Velocity', async (cx: CommandContext) => {
+          await cx.waitKey(188);  // ,
           for (let note of this.selectedNotes) {
               note.velocity = note.velocity * 0.8 + 0 * 0.2;
           }
-      }
-      else if (p.keyCode == 190) { // .   -- increase velocity
+      });
+
+      this.commands.register('Increase Velocity', async (cx: CommandContext) => {
+          await cx.waitKey(190);  // .
           for (let note of this.selectedNotes) {
               note.velocity = note.velocity * 0.8 + 1 * 0.2;
           }
-      }
-      else if (p.keyCode == 65)  { // a    -- pivot up
+      });
+
+      this.commands.register('Shift pitch grid down by 1 harmonic', async (cx: CommandContext) => {
+          await cx.waitKey(65);  // a
           if (this.selectedNotes.length != 1) {
               alert('Pivot: exactly one note must be selected');
               return;
@@ -500,11 +489,11 @@ export class NotesView {
           }
           else {
               alert('Pivot: selected note must be on grid line');
-              return;
           }
+      });
 
-      }
-      else if (p.keyCode == 90)  { // z    -- pivot down
+      this.commands.register('Shift pitch grid up by 1 harmonic', async (cx: CommandContext) => {
+          await cx.waitKey(90);  // z
           if (this.selectedNotes.length != 1) {
               alert('Pivot: exactly one note must be selected');
               return;
@@ -519,10 +508,11 @@ export class NotesView {
           }
           else {
               alert('Pivot: selected note must be on grid line');
-              return;
           }
-      }
-      else if (p.keyCode == 67)  { // c    -- chord
+      });
+
+      this.commands.register('Construct chord', async (cx: CommandContext) => {
+          await cx.waitKey(67);   // c
           if (this.selectedNotes.length == 0) {
               alert('Chord: at least one note must be selected');
               return;
@@ -566,6 +556,26 @@ export class NotesView {
               };
               this.notes.push(newNote);
               this.selectedNotes.push(newNote);
+          }
+      });
+  }
+
+
+  handleKeyPressed(p: p5, viewport: Viewport): void {
+      this.commands.dispatch('keyDown', p, viewport);
+
+      if (p.keyCode == 68) { // d  -- duplicate
+          if (this.selectedNotes.length > 0) {
+              for (const n of this.selectedNotes) {
+                  this.notes.push({
+                      startTime: n.startTime,
+                      endTime: n.endTime,
+                      pitch: n.pitch,
+                      velocity: n.velocity,
+                  });
+              }
+              this.isDragging = true;
+              this.dragStart = this.getMouseCoords(p, viewport);
           }
       }
   }
