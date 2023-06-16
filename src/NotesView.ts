@@ -123,20 +123,20 @@ export class Player {
 };
 
 type CommandHooks<T> = { 
-    keyDown?: T,
-    keyUp?: T,
-    mouseDown?: T,
-    mouseUp?: T,
-    step?: T,
+    keyDown?: (p: p5, viewport: Viewport) => T,
+    keyUp?: (p: p5, viewport: Viewport) => T,
+    mouseDown?: (p: p5, viewport: Viewport) => T,
+    mouseUp?: (p: p5, viewport: Viewport) => T,
+    step?: (p: p5, viewport: Viewport) => T,
 }
 
 function mapHooks<A,B>(f: (x:A) => B, hooks: CommandHooks<A>): CommandHooks<B> {
     let ret : CommandHooks<B> = {};
-    if ('keyDown' in hooks)   ret['keyDown']   = f(hooks['keyDown']);
-    if ('keyUp' in hooks)     ret['keyUp']     = f(hooks['keyUp']);
-    if ('mouseDown' in hooks) ret['mouseDown'] = f(hooks['mouseDown']);
-    if ('mouseUp' in hooks)   ret['mouseUp']   = f(hooks['mouseUp']);
-    if ('step' in hooks)      ret['step']      = f(hooks['step']);
+    if ('keyDown' in hooks)   ret['keyDown']   = (p: p5, viewport: Viewport) => f(hooks['keyDown'](p, viewport));
+    if ('keyUp' in hooks)   ret['keyUp']   = (p: p5, viewport: Viewport) => f(hooks['keyUp'](p, viewport));
+    if ('mouseDown' in hooks)   ret['mouseDown']   = (p: p5, viewport: Viewport) => f(hooks['mouseDown'](p, viewport));
+    if ('mouseUp' in hooks)   ret['mouseUp']   = (p: p5, viewport: Viewport) => f(hooks['mouseUp'](p, viewport));
+    if ('step' in hooks)   ret['step']   = (p: p5, viewport: Viewport) => f(hooks['step'](p, viewport));
     return ret;
 }
 
@@ -198,17 +198,17 @@ class CommandRunner {
         return state;
     }
 
-    register(command: Command) {
+    register(description: string, command: Command) {
         this.commands.push({
             command: command,
             state: this.initState(command),
         });
     }
 
-    dispatch(hook: keyof CommandHooks<void>) {
+    dispatch(hook: keyof CommandHooks<void>, p: p5, viewport: Viewport) {
         for (const c of this.commands) {
             if (hook in c.state) {
-                const status = c.state[hook]();
+                const status = c.state[hook](p, viewport)();
                 switch (status.control) {
                     case 'REPEAT':
                         break;  // no change
@@ -239,6 +239,7 @@ export class NotesView {
   private selectStart: { x: number, y: number };
   private selectedNotes: Note[];
   private instrument: Instrument;
+  private commands: CommandRunner;
 
   constructor(quantizationGrid: QuantizationGrid) {
     this.quantizationGrid = quantizationGrid;
@@ -247,6 +248,23 @@ export class NotesView {
     this.dragStart = null;
     this.selectedNotes = [];
     this.instrument = new ToneSynth();
+    this.commands = new CommandRunner();
+
+    this.commands.register('GCD', async (cx: CommandContext) => {
+        await cx.listen({
+            'keyDown': (p: p5, viewport: Viewport) => () => {
+                if (p.keyCode == 71) { // g
+                    return { control: 'CONSUME', value: null as null };
+                }
+                else {
+                    return { control: 'REPEAT' };
+                }
+            }});
+        if (this.selectedNotes.length > 0) {
+            const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
+            this.quantizationGrid.setYSnap(gcd);
+        }
+    });
   }
 
   setInstrument(instrument: Instrument) {
@@ -404,6 +422,8 @@ export class NotesView {
   }
 
   handleKeyPressed(p: p5, viewport: Viewport): void {
+      this.commands.dispatch('keyDown', p, viewport);
+
       if (p.keyCode === p.ESCAPE) {
           this.selectedNotes = [];
           this.isDragging = false;
@@ -428,10 +448,6 @@ export class NotesView {
           }
       }
       else if (p.keyCode == 71) { // g  -- gcd
-          if (this.selectedNotes.length > 0) {
-              const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
-              this.quantizationGrid.setYSnap(gcd);
-          }
       }
       else if (p.keyCode == 76) { // l  -- lcm
           if (this.selectedNotes.length > 0) {
