@@ -296,10 +296,12 @@ class CommandRunner {
                 td.innerText = cat;
             }
 
+            const tbody = document.createElement('tbody');
+            table.appendChild(tbody);
             for (const c of this.commands) {
                 if (c.category === cat) {
                     const tr = document.createElement('tr');
-                    table.appendChild(tr);
+                    tbody.appendChild(tr);
                     const td = document.createElement('td');
                     tr.appendChild(td);
 
@@ -467,11 +469,6 @@ export class NotesView {
 
   handleMousePressed(): void {
     this.commands.dispatch('mouseDown');
-
-    if (this.p5.keyIsDown(this.p5.OPTION)) {
-        this.quantizationGrid.setYSnap(this.getMouseCoords().y);
-        return;
-    }
   }
 
   handleMouseReleased(): void {
@@ -493,14 +490,44 @@ export class NotesView {
           }
           return true;
       };
+      
+      simpleKey('h - Show/hide help', 'View', 72, async () => {
+          const style = document.getElementById('help-container').style;
+          if (style.display === 'none') {
+              style.display = 'block';
+          }
+          else {
+              style.display = 'none';
+          }
+      });
 
-      simpleKey('g - select common subharmonic', 'Pitch Grid', 71, () => {
+
+      this.commands.register('spacebar - play/stop', 'Transport', async (cx:CommandContext) => {
+          // Dummy, handled in Sketch.ts
+          await cx.listen({});
+      });
+      
+      this.commands.register('option+click - select fundamental (note)', 'hidden', async (cx:CommandContext) => {
+          const note = await cx.listen(cx.when(() => this.p5.keyIsDown(this.p5.OPTION), this.listenSelectNote(cx)));
+          await cx.action(() => {
+               this.quantizationGrid.setYSnap(note.pitch);
+          });
+      });
+      
+      this.commands.register('option+click - set fundamental', 'View', async (cx:CommandContext) => {
+          await cx.listen(cx.when(() => this.p5.keyIsDown(this.p5.OPTION), cx.mouseDown()));
+          await cx.action(() => {
+               this.quantizationGrid.setYSnap(this.getMouseCoords().y);
+          });
+      });
+
+      simpleKey('g - select common subharmonic ("gcd")', 'View', 71, () => {
           if (! mustHaveSelection('GCD')) return;
           const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
           this.quantizationGrid.setYSnap(gcd);
       });
 
-      simpleKey('l - select common harmonic', 'Pitch Grid', 76, () => {
+      simpleKey('l - select common harmonic ("lcm")', 'View', 76, () => {
           if (! mustHaveSelection('LCM')) return;
           const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
           this.quantizationGrid.setYSnap(lcm);
@@ -526,7 +553,7 @@ export class NotesView {
           }
       });
 
-      simpleKey('a - shift pitch grid down by 1 harmonic', 'Pitch Grid', 65, () => {
+      simpleKey('z - shift pitch grid down by 1 harmonic', 'View', 90, () => {
           if (this.selectedNotes.length !== 1) {
               alert('Pivot: exactly one note must be selected');
               return;
@@ -544,7 +571,7 @@ export class NotesView {
           }
       });
 
-      simpleKey('z - shift pitch gtid up by 1 harmonic', 'Pitch Grid', 90, () => {
+      simpleKey('a - shift pitch gtid up by 1 harmonic', 'View', 65, () => {
           if (this.selectedNotes.length != 1) {
               //alert('Pivot: exactly one note must be selected');
               return;
@@ -596,19 +623,85 @@ export class NotesView {
               }
           }
       });
-      
-      this.commands.register('h - Show/hide help', 'Tools', async (cx: CommandContext) => {
-          await cx.listen(cx.key(this.p5, 72));  // h
-          await cx.action(() => {
-              const style = document.getElementById('help-container').style;
-              if (style.display === 'none') {
-                  style.display = 'block';
-              }
-              else {
-                  style.display = 'none';
+
+      this.commands.register('arrow keys - scroll', 'View', async (cx: CommandContext) => {
+          const keyCode = await cx.listen({
+              keyDown: () => {
+                  if ([37,38,39,40].includes(this.p5.keyCode))
+                      return { control: 'CONSUME', value: this.p5.keyCode };
+                  else
+                      return { control: 'REPEAT' };
               }
           });
+          await cx.action(() => {
+              if (keyCode == 37) // <-
+                  this.viewport.translateX(-0.25);
+              else if (keyCode == 39) // ->
+                  this.viewport.translateX(-0.25);
+              else if (keyCode == 38) // ^
+                  this.viewport.translateY(0.25);
+              else if (keyCode == 40) 
+                  this.viewport.translateY(-0.25);
+              else
+                  console.log("Impossible keycode");
+          });
       });
+
+      this.commands.register('(shift+) 2 - divide (multiply) fundamental by two', 'View', async (cx: CommandContext) => {
+          await cx.listen(cx.when(() => ! this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 50)));
+          if (this.p5.keyIsDown(this.p5.SHIFT)) {
+              await cx.action(() => 
+                  this.quantizationGrid.setYSnap(this.quantizationGrid.getYSnap().mul(N(2)).normalize()));
+          }
+          else {
+              await cx.action(() => 
+                  this.quantizationGrid.setYSnap(this.quantizationGrid.getYSnap().div(N(2)).normalize()));
+          }
+      });
+      
+      this.commands.register('(shift+) 3 - divide (multiply) fundamental by three', 'View', async (cx: CommandContext) => {
+          await cx.listen(cx.when(() => ! this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 51)));
+          if (this.p5.keyIsDown(this.p5.SHIFT)) {
+              await cx.action(() => 
+                  this.quantizationGrid.setYSnap(this.quantizationGrid.getYSnap().mul(N(3)).normalize()));
+          }
+          else {
+              await cx.action(() => 
+                  this.quantizationGrid.setYSnap(this.quantizationGrid.getYSnap().div(N(3)).normalize()));
+          }
+      });
+      
+      this.commands.register('ctrl+(shift+) 2 - divide (multiply) time grid by two', 'View', async (cx: CommandContext) => {
+          await cx.listen(cx.when(() => this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 50)));
+          if (this.p5.keyIsDown(this.p5.SHIFT)) {
+              await cx.action(() => 
+                  this.quantizationGrid.setXSnap(this.quantizationGrid.getXSnap() * 2));
+          }
+          else {
+              await cx.action(() => 
+                  this.quantizationGrid.setXSnap(this.quantizationGrid.getXSnap() / 2));
+          }
+      });
+      
+      this.commands.register('ctrl+(shift+) 3  - divide (multiply) time grid by three', 'View', async (cx: CommandContext) => {
+          await cx.listen(cx.when(() => this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 51)));
+          if (this.p5.keyIsDown(this.p5.SHIFT)) {
+              await cx.action(() => 
+                  this.quantizationGrid.setXSnap(this.quantizationGrid.getXSnap() * 3));
+          }
+          else {
+              await cx.action(() => 
+                  this.quantizationGrid.setXSnap(this.quantizationGrid.getXSnap() / 3));
+          }
+      });
+
+      this.commands.register('ctrl+s - save to location bar', 'File', async (cx: CommandContext) => {
+          await cx.listen(cx.when(() => this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 83)));
+          await cx.action(() => {
+              document.location.hash = Buffer.from(JSON.stringify(this.serialize())).toString("base64");
+          });
+      });
+
 
       this.commands.register('shift+click - add/remove note from selection', 'Edit', async (cx: CommandContext) => {
           const note = await cx.listen(
@@ -625,6 +718,7 @@ export class NotesView {
               });
           }
       });
+
 
       this.commands.register('drag handles - resize notes', 'hidden', async (cx: CommandContext) => {
           const onHandle = (note: Note) => {
@@ -702,7 +796,7 @@ export class NotesView {
       });
       
 
-      this.commands.register('d - duplicate notes', 'Edit', async (cx: CommandContext) => {
+      this.commands.register('d - duplicate notes', 'Tools', async (cx: CommandContext) => {
           await cx.listen(cx.when(() => this.selectedNotes.length != 0, cx.key(this.p5, 68)));  // d
 
           const notes = await cx.action(() => {
@@ -877,72 +971,6 @@ export class NotesView {
 
   handleKeyPressed(): void {
       this.commands.dispatch('keyDown');
-
-      const subdivKey = (subdiv: ExactNumberType) => {
-          if (this.p5.keyIsDown(this.p5.CONTROL)) {
-              if (this.p5.keyIsDown(this.p5.SHIFT)) {
-                  this.quantizationGrid.setXSnap(this.quantizationGrid.getXSnap() * subdiv.toNumber());
-              }
-              else {
-                  this.quantizationGrid.setXSnap(this.quantizationGrid.getXSnap() / subdiv.toNumber());
-              }
-          }
-          else {
-              if (this.p5.keyIsDown(this.p5.SHIFT)) {
-                  this.quantizationGrid.setYSnap(this.quantizationGrid.getYSnap().mul(subdiv));
-              }
-              else {
-                  this.quantizationGrid.setYSnap(this.quantizationGrid.getYSnap().div(subdiv));
-              }
-          }
-      };
-
-      switch (this.p5.keyCode) {
-          case 37: { // <-
-              this.viewport.translateX(-0.25);
-              break;
-          }
-          case 39: { // ->
-              this.viewport.translateX(0.25);
-              break;
-          }
-          case 38: { // ^
-              this.viewport.translateY(0.25);
-              break;
-          }
-          case 40: { // v
-              this.viewport.translateY(-0.25);
-              break;
-          }
-          case 86: { // 'v'
-              const xmin = this.viewport.mapXinv(0, this.p5);
-              const xmax = this.viewport.mapXinv(this.p5.width, this.p5);
-              const ymin = this.viewport.mapYinv(this.p5.height, this.p5);
-              const ymax = this.viewport.mapYinv(0, this.p5);
-              if (this.viewport instanceof LogViewport) {
-                  this.viewport = new LinearViewport(xmin, ymin, xmax, ymax);
-              }
-              else {
-                  const noteMin = ymin < 0 ? 1 : 12 * Math.log2(ymin / 440) + 69;
-                  const noteMax = ymax < 0 ? 1 : 12 * Math.log2(ymax / 440) + 69;
-                  this.viewport = new LogViewport(xmin, noteMin, xmax, noteMax); 
-              }
-              break;
-          }
-          case 50: { // 2
-              subdivKey(N('2'));
-              break;
-          }
-          case 51: { // 3
-              subdivKey(N('3'));
-              break;
-          }
-          case 83: {// s -- save
-              if (this.p5.keyIsDown(this.p5.CONTROL)) {
-                  document.location.hash = Buffer.from(JSON.stringify(this.serialize())).toString("base64");
-              }
-          }
-      }
   }
 
   play(): Player {
