@@ -142,10 +142,8 @@ function mapHooks<A,B>(f: (x:A) => B, hooks: CommandHooks<A>): CommandHooks<B> {
 
 
 type CommandStatus<T> =
-    { control: 'REPEAT' } |
-    { control: 'CANCEL' } |
-    { control: 'PROCEED', value: T } |
-    { control: 'CONSUME', value: T };
+    { control: 'REPEAT' } | { control: 'CANCEL'} |
+    { control: 'PROCEED', value: T } | { control: 'CONSUME', value: T }
 
 function mapStatus<A,B> (f: (x:A) => B, status:CommandStatus<A>): CommandStatus<B> {
     if (status === null) {
@@ -159,6 +157,8 @@ function mapStatus<A,B> (f: (x:A) => B, status:CommandStatus<A>): CommandStatus<
     }
 }
 
+type Listener<T> = CommandHooks<() => CommandStatus<T>>;
+
 class CommandContext {
     private command: CommandWithState;
 
@@ -166,7 +166,16 @@ class CommandContext {
         this.command = command;
     }
 
-    listen<T>(hooks: CommandHooks<() => CommandStatus<T>>): Promise<T> {
+    async listen<T>(hooks: Listener<T> | Promise<Listener<T>>): Promise<T> {
+        let listener: Listener<T>;
+
+        if (hooks instanceof Promise) {
+            listener = await hooks;
+        }
+        else {
+            listener = hooks;
+        }
+
         return new Promise((resolve, reject) => {
             const hookMap = (cb: () => CommandStatus<T>) => () => {
                 const status = cb();
@@ -178,12 +187,12 @@ class CommandContext {
                     return this.command.state;
                 }, status);
             };
-            this.command.state = mapHooks(hookMap, hooks);
+            this.command.state = mapHooks(hookMap, listener);
         });
     }
 
-    waitKey(p: p5, keyCode: number): Promise<null> {
-        return this.listen({
+    key(p: p5, keyCode: number): Listener<null> {
+        return {
             'keyDown': () => {
                 if (p.keyCode == keyCode) { 
                     return { control: 'CONSUME', value: null };
@@ -192,7 +201,19 @@ class CommandContext {
                     return { control: 'REPEAT' };
                 }
             }
-        });
+        };
+    }
+
+    when<T>(p: (t: T) => boolean, listener: Listener<T>): Listener<T> {
+        return mapHooks(hook => () => {
+                   const status = hook();
+                   if ('value' in status && p(status.value)) {
+                       return status;
+                   }
+                   else {
+                       return { control: 'REPEAT' };
+                   }
+               }, listener);
     }
 }
 
@@ -332,6 +353,8 @@ export class NotesView {
   }
 
   handleMousePressed(): void {
+    this.commands.dispatch('mouseDown');
+
     if (this.isDragging) {
         this.isDragging = false;
         this.dragStart = null;
@@ -342,19 +365,6 @@ export class NotesView {
         const noteBox = this.getNoteBox(note,);
         if (noteBox.x0 <= this.p5.mouseX && this.p5.mouseX <= noteBox.xf 
          && noteBox.y0 <= this.p5.mouseY && this.p5.mouseY <= noteBox.yf) {
-            this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
-            if (this.p5.keyIsDown(this.p5.SHIFT)) {
-                if (this.selectedNotes.includes(note)) {
-                    this.selectedNotes = this.selectedNotes.filter(n => n != note);
-                }
-                else {
-                    this.selectedNotes.push(note);
-                }
-            }
-            else if (! this.selectedNotes.includes(note)) {
-                this.selectedNotes = [note];
-            }
-
             // Start moving drag
             if (this.selectedNotes.includes(note)) {
                 this.isDragging = true;
@@ -436,7 +446,7 @@ export class NotesView {
   
   registerCommands() {
       this.commands.register('GCD', async (cx: CommandContext) => {
-          await cx.waitKey(this.p5, 71); // g       
+          await cx.listen(cx.key(this.p5, 71)); // g       
           if (this.selectedNotes.length > 0) {
               const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
               this.quantizationGrid.setYSnap(gcd);
@@ -444,7 +454,7 @@ export class NotesView {
       });
 
       this.commands.register('LCM', async (cx: CommandContext) => {
-          await cx.waitKey(this.p5, 76); // l
+          await cx.listen(cx.key(this.p5, 76)); // l
           if (this.selectedNotes.length > 0) {
               const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
               this.quantizationGrid.setYSnap(lcm);
@@ -452,29 +462,29 @@ export class NotesView {
       });
       
       this.commands.register('Delete Notes', async (cx: CommandContext) => {
-          await cx.waitKey(this.p5, 8);  // backspace
+          await cx.listen(cx.key(this.p5, 8));  // backspace
           this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
           this.selectedNotes = [];
       });
 
       this.commands.register('Decrease Velocity', async (cx: CommandContext) => {
-          await cx.waitKey(this.p5, 188);  // ,
+          await cx.listen(cx.key(this.p5, 188));  // ,
           for (let note of this.selectedNotes) {
               note.velocity = note.velocity * 0.8 + 0 * 0.2;
           }
       });
 
       this.commands.register('Increase Velocity', async (cx: CommandContext) => {
-          await cx.waitKey(this.p5, 190);  // .
+          await cx.listen(cx.key(this.p5, 190));  // .
           for (let note of this.selectedNotes) {
               note.velocity = note.velocity * 0.8 + 1 * 0.2;
           }
       });
 
       this.commands.register('Shift pitch grid down by 1 harmonic', async (cx: CommandContext) => {
-          await cx.waitKey(this.p5, 65);  // a
+          await cx.listen(cx.key(this.p5, 65));  // a
           if (this.selectedNotes.length != 1) {
-              alert('Pivot: exactly one note must be selected');
+              // alert('Pivot: exactly one note must be selected');
               return;
           }
           const note = this.selectedNotes[0];
@@ -491,9 +501,9 @@ export class NotesView {
       });
 
       this.commands.register('Shift pitch grid up by 1 harmonic', async (cx: CommandContext) => {
-          await cx.waitKey(this.p5, 90);  // z
+          await cx.listen(cx.key(this.p5, 90));  // z
           if (this.selectedNotes.length != 1) {
-              alert('Pivot: exactly one note must be selected');
+              //alert('Pivot: exactly one note must be selected');
               return;
           }
           const note = this.selectedNotes[0];
@@ -510,9 +520,9 @@ export class NotesView {
       });
 
       this.commands.register('Construct chord', async (cx: CommandContext) => {
-          await cx.waitKey(this.p5, 67);   // c
+          await cx.listen(cx.key(this.p5, 67));   // c
           if (this.selectedNotes.length == 0) {
-              alert('Chord: at least one note must be selected');
+              //alert('Chord: at least one note must be selected');
               return;
           }
 
@@ -556,6 +566,62 @@ export class NotesView {
               this.selectedNotes.push(newNote);
           }
       });
+
+      this.commands.register('Add/remove note from selection', async (cx: CommandContext) => {
+          console.log("Adding handler");
+          const note = await cx.listen(
+                                cx.when(() => this.p5.keyIsDown(this.p5.SHIFT), 
+                                        this.listenSelectNote(cx)));
+          if (this.selectedNotes.includes(note)) {
+              this.selectedNotes = this.selectedNotes.filter(n => n != note);
+          }
+          else {
+              this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
+              this.selectedNotes.push(note);
+          }
+      });
+      
+      this.commands.register('Select note', async (cx: CommandContext) => {
+          const note = await cx.listen(this.listenSelectNote(cx));
+          this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
+          this.selectedNotes = [note];
+      });
+
+      /*
+
+      this.commands.register('Move notes', async (cx: CommandContext) => {
+          const note = await cx.consume(
+                                cx.when((note) => this.selectedNotes.includes(note),
+                                        this.listenSelectNote(cx)));
+          await cx.listen({
+              step: () => {
+                  // move notes according to mouse position
+                  return { control: 'REPEAT' };
+              },
+              mouseUp: () => {
+                  return { control: 'CONSUME', value: null };
+              },
+              cancel: () => {
+                  // put notes back to where they used to be
+              }
+          });
+      });
+      */
+  }
+
+  listenSelectNote(cx: CommandContext): Listener<Note> {
+      return {
+              mouseDown: () => {
+                  for (const note of this.notes) {
+                      const noteBox = this.getNoteBox(note);
+                      if (noteBox.x0 <= this.p5.mouseX && this.p5.mouseX <= noteBox.xf 
+                       && noteBox.y0 <= this.p5.mouseY && this.p5.mouseY <= noteBox.yf) {
+                          return { control: 'CONSUME', value: note };
+                       }
+                  }
+                  return { control: 'REPEAT' };
+              }
+          };
   }
 
 
