@@ -1,6 +1,6 @@
 import p5 from "p5";
 import {QuantizationGrid} from "./QuantizationGrid";
-import {Viewport, LogViewport, LinearViewport} from "./Viewport";
+import {Viewport, LogViewport} from "./Viewport";
 import {ToneSynth, MPEInstrument, Instrument} from "./Instrument";
 import {ExactNumber as N, ExactNumberType} from "exactnumber";
 import * as Tone from "tone";
