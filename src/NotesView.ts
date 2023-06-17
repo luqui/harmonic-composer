@@ -586,6 +586,81 @@ export class NotesView {
               });
           }
       });
+
+      this.commands.register('Resize notes', async (cx: CommandContext) => {
+          const onHandle = (note: Note) => {
+              const noteBox = this.getNoteBox(note);
+              if (noteBox.xf - 10 <= this.p5.mouseX && this.p5.mouseX <= noteBox.xf
+                    && noteBox.y0 <= this.p5.mouseY && this.p5.mouseY <= noteBox.yf) {
+                  return 'RIGHT';
+              }
+              else if (noteBox.x0 <= this.p5.mouseX && this.p5.mouseX <= noteBox.x0 + 10
+                    && noteBox.y0 <= this.p5.mouseY && this.p5.mouseY <= noteBox.yf) {
+                  return 'LEFT';
+              }
+              else {
+                  return false;
+              }
+          };
+          const [note, handle] = await cx.listen({
+              draw: () => {
+                  for (const note of this.notes) {
+                      if (onHandle(note)) {
+                          this.p5.cursor('col-resize');
+                          return { control: 'REPEAT' };
+                      }
+                  }
+                  return { control: 'REPEAT' };
+              },
+              mouseDown: () => {
+                  for (const note of this.notes) {
+                      const handle = onHandle(note);
+                      if (handle) {
+                          return { control: 'CONSUME', value: [note, handle] };
+                      }
+                  }
+                  return { control: 'REPEAT' };
+              }
+          });
+          const startCoords = this.getMouseCoords();
+          const selection = this.selectedNotes.includes(note) ? this.selectedNotes : [note];
+          const refTimes = selection.map(n => ({ startTime: n.startTime, endTime: n.endTime }));
+
+          await cx.listen({
+              action: { priority: 0, value: () => {
+                  const coords = this.getMouseCoords();
+
+                  for (let i = 0; i < selection.length; i++) {
+                      if (handle === 'LEFT') {
+                          const newStart = refTimes[i].startTime + coords.x - startCoords.x;
+                          if (newStart < selection[i].endTime) {
+                              selection[i].startTime = newStart;
+                          }
+                          else {
+                              selection[i].startTime = refTimes[i].endTime - this.quantizationGrid.getXSnap();
+                          }
+                      }
+                      else {
+                          const newEnd = refTimes[i].endTime + coords.x - startCoords.x;
+                          if (newEnd > selection[i].startTime) {
+                              selection[i].endTime = newEnd;
+                          }
+                          else {
+                              selection[i].endTime = refTimes[i].startTime + this.quantizationGrid.getXSnap();
+                          }
+                      }
+                  }
+                  return { control: 'REPEAT' };
+              } },
+              draw: () => {
+                  this.p5.cursor('col-resize');
+                  return { control: 'REPEAT' };
+              },
+              mouseUp: () => {
+                  return { control: 'CONSUME', value: undefined };
+              },
+          });
+      });
       
       this.commands.register('Select and move notes', async (cx: CommandContext) => {
           const note = await cx.listen(this.listenSelectNote(cx));
@@ -830,6 +905,7 @@ export class NotesView {
   }
 
   draw(): void {
+    this.p5.cursor('auto');  // to be overridden by commands' draw maybe
     this.quantizationGrid.drawGrid(this.p5, this.viewport);
 
     this.p5.colorMode(this.p5.RGB);
