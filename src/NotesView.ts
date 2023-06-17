@@ -355,8 +355,7 @@ class CommandRunner {
 
 function intervalIntersects(a1: number, b1: number, a2: number, b2:number): boolean {
   return ! (a2 > b1 || a1 > b2);
-};
-
+}
 
 
 type SerializedNote = { startTime: number, endTime: number, pitch: string, velocity: number };
@@ -661,6 +660,50 @@ export class NotesView {
               },
           });
       });
+      
+
+      this.commands.register('Duplicate notes', async (cx: CommandContext) => {
+          await cx.listen(cx.when(() => this.selectedNotes.length != 0, cx.key(this.p5, 68)));  // d
+
+          const notes = await cx.action(() => {
+              const r = [...this.selectedNotes];
+              this.selectedNotes = [];
+              return r;
+          });
+          const initialMouse: Point = this.getMouseCoords();
+          const translate = (note: Note, mouse: Point) => ({
+              startTime: note.startTime + mouse.x - initialMouse.x,
+              endTime: note.endTime + mouse.x - initialMouse.x,
+              pitch: note.pitch,
+              velocity: note.velocity,
+          });
+          await cx.listen({
+              draw: () => {
+                  const mouse = this.getMouseCoords();
+                  for (const note of notes) {
+                      this.drawNote(translate(note, mouse), true);
+                  }
+                  return { control: 'REPEAT' };
+              },
+              mouseDown: () => {
+                  return { control: 'CONSUME', value: undefined };
+              },
+              keyDown: () => {
+                  if (this.p5.keyCode == 27) { // esc
+                      return { control: 'CANCEL' };
+                  }
+                  else {
+                      return { control: 'REPEAT' };
+                  }
+              },
+          });
+          await cx.action(() => {
+              const mouse = this.getMouseCoords();
+              this.selectedNotes = notes.map(n => translate(n, mouse));
+              this.notes = this.notes.concat(this.selectedNotes);
+          });
+      });
+
       
       this.commands.register('Select and move notes', async (cx: CommandContext) => {
           const note = await cx.listen(this.listenSelectNote(cx));
