@@ -3,6 +3,8 @@ import {QuantizationGrid} from "./QuantizationGrid";
 import {Viewport, LogViewport} from "./Viewport";
 import {ToneSynth, MPEInstrument, Instrument} from "./Instrument";
 import {Scheduler} from "./Scheduler";
+import * as Commands from "./Commands";
+import * as Utils from "./Utils";
 import {ExactNumber as N, ExactNumberType} from "exactnumber";
 import * as Tone from "tone";
 
@@ -69,289 +71,8 @@ export class Player {
   }
 };
 
-type CommandHooks<T> = { 
-    keyDown?: T,
-    keyUp?: T,
-    mouseDown?: T,
-    mouseUp?: T,
-    draw?: T,
-    action?: { value: T, priority: number },
-}
-
-function mapHooks<A,B>(f: (x:A) => B, hooks: CommandHooks<A>): CommandHooks<B> {
-    let ret : CommandHooks<B> = {};
-    if ('keyDown' in hooks)   ret.keyDown   = f(hooks.keyDown);
-    if ('keyUp' in hooks)     ret.keyUp     = f(hooks.keyUp);
-    if ('mouseDown' in hooks) ret.mouseDown = f(hooks.mouseDown);
-    if ('mouseUp' in hooks)   ret.mouseUp   = f(hooks.mouseUp);
-    if ('draw' in hooks)      ret.draw      = f(hooks.draw);
-    if ('action' in hooks)    ret.action    = { value: f(hooks.action.value), priority: hooks.action.priority };
-    return ret;
-}
-
-
-type CommandStatus<T> =
-    { control: 'REPEAT' } | { control: 'CANCEL'} |
-    { control: 'PROCEED', value: T } | { control: 'CONSUME', value: T }
-
-function mapStatus<A,B> (f: (x:A) => B, status:CommandStatus<A>): CommandStatus<B> {
-    if (status === null) {
-        return null;
-    }
-    if (status.control === 'CONSUME' || status.control === 'PROCEED') { 
-        return { control: status.control, value: f(status.value) };
-    }
-    else {
-        return status;
-    }
-}
-
-type Listener<T> = CommandHooks<() => CommandStatus<T>>;
-
-class CommandContext {
-    private command: CommandWithState;
-    private commandRunner: CommandRunner;
-
-    constructor(command: CommandWithState, commandRunner: CommandRunner) {
-        this.command = command;
-        this.commandRunner = commandRunner;
-    }
-
-    async listen<T>(hooks: Listener<T> | Promise<Listener<T>>): Promise<T> {
-        let listener: Listener<T>;
-
-        if (hooks instanceof Promise) {
-            listener = await hooks;
-        }
-        else {
-            listener = hooks;
-        }
-
-        return new Promise((resolve, reject) => {
-            let stateCache;
-            const hookMap = (cb: () => CommandStatus<T>) => () => {
-                const status = cb();
-
-                // status is e.g. PROCEED 42
-                return mapStatus((x: T) => {
-                    // @ts-ignore
-                    resolve(x);
-                    return this.command.state;
-                }, status);
-            };
-            this.command.state = mapHooks(hookMap, listener);
-        });
-    }
-
-    key(p: p5, keyCode: number): Listener<null> {
-        return {
-            keyDown: () => {
-                if (p.keyCode == keyCode) { 
-                    return { control: 'CONSUME', value: null };
-                }
-                else {
-                    return { control: 'REPEAT' };
-                }
-            }
-        };
-    }
-
-    mouseDown(): Listener<null> {
-        return {
-            mouseDown: () => ({ control: 'CONSUME', value: null })
-        }
-    }
-
-    when<T>(p: (t: T) => boolean, listener: Listener<T>): Listener<T> {
-        return mapHooks(hook => () => {
-                   const status = hook();
-                   if ('value' in status && p(status.value)) {
-                       return status;
-                   }
-                   else {
-                       return { control: 'REPEAT' };
-                   }
-               }, listener);
-    }
-
-    action<T>(code: () => T, priority = 0): Promise<T> {
-        return this.listen({
-            action: {
-                priority: priority,
-                value: () => {
-                    const x = code();
-                    return { control: 'PROCEED', value: x };
-                }
-            }
-        });
-    }
-
-}
-
-
-type Command = (cx: CommandContext) => Promise<void>;
-
-type CommandState = CommandHooks<() => CommandStatus<CommandState>>;
-
-type CommandWithState = { command: Command, state: CommandState, category: string, description: string };
-
-class CommandRunner {
-    private commands: CommandWithState[];
-
-    constructor() {
-        this.commands = [];
-    }
-
-    private initState(command: CommandWithState){
-        command.command(new CommandContext(command, this)).then(() => {
-            // Start over when finished.
-            // TODO cancel so cleanup can happen!
-            this.initState(command);
-        });
-    }
-
-    register(description: string, category: string, command: Command) {
-        const cs = {
-            command: command,
-            state: {},
-            category: category,
-            description: description,
-        };
-        this.initState(cs);
-        this.commands.push(cs);
-    }
-
-    getHelpHTML() {
-        const div = document.createElement('div');
-
-        const categories = dedup(this.commands.map(c => c.category)).sort();
-
-        for (const cat of categories) {
-            if (cat === 'hidden')
-                continue;
-
-            const table = document.createElement('table');
-            div.appendChild(table);
-            {
-                const thead = document.createElement('thead');
-                table.appendChild(thead);
-                const tr = document.createElement('tr');
-                thead.appendChild(tr);
-                const td = document.createElement('td');
-                tr.appendChild(td);
-
-                td.innerText = cat;
-            }
-
-            const tbody = document.createElement('tbody');
-            table.appendChild(tbody);
-            for (const c of this.commands) {
-                if (c.category === cat) {
-                    const tr = document.createElement('tr');
-                    tbody.appendChild(tr);
-                    const td = document.createElement('td');
-                    tr.appendChild(td);
-
-                    td.innerText = c.description;
-                }
-            }
-        }
-        return div;
-    }
-
-    resolveActions() {
-        let maxPrio: number = -Infinity;
-        let maxActions: CommandWithState[] = [];
-
-        for (const c of this.commands) {
-            if ('action' in c.state) {
-                if (c.state.action.priority > maxPrio) {
-                    for (const d of maxActions) {
-                        this.initState(d);
-                    }
-                    maxActions = [c];
-                    maxPrio = c.state.action.priority;
-                }
-                else if (c.state.action.priority == maxPrio) {
-                    maxActions.push(c);
-                }
-                else {
-                    this.initState(c);
-                }
-            }
-        }
-
-        if (maxActions.length == 0) {
-            // Nothing to do.
-        }
-        else if (maxActions.length == 1) {
-            const status = maxActions[0].state.action.value();
-            switch (status.control) {
-                case 'REPEAT':
-                    break;
-                case 'CANCEL':
-                    this.initState(maxActions[0]);
-                    break;
-                case 'PROCEED':
-                    if (maxActions[0].state !== status.value) {
-                        throw Error("Invariant error");
-                    }
-                    break;
-                case 'CONSUME':
-                    console.log("Actions may not consume", maxActions[0]);
-                    throw Error("Actions may not consume");
-            }
-        }
-        else {
-            console.log("More than one competing best action", maxActions);
-        }
-    }
-
-    dispatch(hook: keyof CommandHooks<void>) {
-        for (const c of this.commands) {
-            if (hook in c.state) {
-                if (hook === 'action')
-                    throw Error('Cannot call dispatch on actions, they are resolved automatically');
-
-                const status = c.state[hook]();
-                if (status === null)
-                    continue;
-                switch (status.control) {
-                    case 'REPEAT':
-                        break;  // no change
-                    case 'CANCEL':
-                        this.initState(c);
-                        break;
-                    case 'PROCEED':
-                        if (c.state !== status.value) {
-                            throw Error("Invariant error");
-                        }
-                        break;  // no change
-                    case 'CONSUME':
-                        if (c.state !== status.value) {
-                            throw Error("Invariant error");
-                        }
-                        return; // stop processing this event.
-                }
-            }
-        }
-        this.resolveActions();
-    }
-}
-
-
-function intervalIntersects(a1: number, b1: number, a2: number, b2:number): boolean {
-  return ! (a2 > b1 || a1 > b2);
-}
-
-function dedup<T>(xs: T[]): T[] {
-    return [...new Set(xs)];
-}
-
-
 type SerializedNote = { startTime: number, endTime: number, pitch: string, velocity: number };
 type Serialized = { notes: SerializedNote[] };
-
 
 export class NotesView {
   private p5: p5;
@@ -360,7 +81,7 @@ export class NotesView {
   private notes: Note[];
   private selectedNotes: Note[];
   private instrument: Instrument;
-  private commands: CommandRunner;
+  private commands: Commands.Runner;
 
   constructor(p: p5) {
     this.p5 = p;
@@ -369,7 +90,7 @@ export class NotesView {
     this.notes = [];
     this.selectedNotes = [];
     this.instrument = new ToneSynth();
-    this.commands = new CommandRunner();
+    this.commands = new Commands.Runner();
 
     this.registerCommands();
     document.getElementById('help-container').appendChild(this.commands.getHelpHTML());
@@ -424,7 +145,7 @@ export class NotesView {
   
   registerCommands() {
       const simpleKey = (name: string, category: string, key: number, cb: () => void) => {
-          this.commands.register(name, category, async (cx:CommandContext) => {
+          this.commands.register(name, category, async (cx:Commands.Context) => {
               await cx.listen(cx.key(this.p5, key));
               await cx.action(cb);
           });
@@ -449,19 +170,19 @@ export class NotesView {
       });
 
 
-      this.commands.register('spacebar - play/stop', 'Transport', async (cx:CommandContext) => {
+      this.commands.register('spacebar - play/stop', 'Transport', async (cx:Commands.Context) => {
           // Dummy, handled in Sketch.ts
           await cx.listen({});
       });
       
-      this.commands.register('option+click - select fundamental (note)', 'hidden', async (cx:CommandContext) => {
+      this.commands.register('option+click - select fundamental (note)', 'hidden', async (cx:Commands.Context) => {
           const note = await cx.listen(cx.when(() => this.p5.keyIsDown(this.p5.OPTION), this.listenSelectNote(cx)));
           await cx.action(() => {
                this.quantizationGrid.setYSnap(note.pitch);
           });
       });
       
-      this.commands.register('option+click - set fundamental', 'View', async (cx:CommandContext) => {
+      this.commands.register('option+click - set fundamental', 'View', async (cx:Commands.Context) => {
           await cx.listen(cx.when(() => this.p5.keyIsDown(this.p5.OPTION), cx.mouseDown()));
           await cx.action(() => {
                this.quantizationGrid.setYSnap(this.getMouseCoords().y);
@@ -571,7 +292,7 @@ export class NotesView {
           }
       });
 
-      this.commands.register('arrow keys - scroll', 'View', async (cx: CommandContext) => {
+      this.commands.register('arrow keys - scroll', 'View', async (cx: Commands.Context) => {
           const keyCode = await cx.listen({
               keyDown: () => {
                   if ([37,38,39,40].includes(this.p5.keyCode))
@@ -594,7 +315,7 @@ export class NotesView {
           });
       });
 
-      this.commands.register('(shift+) 2 - divide (multiply) fundamental by two', 'View', async (cx: CommandContext) => {
+      this.commands.register('(shift+) 2 - divide (multiply) fundamental by two', 'View', async (cx: Commands.Context) => {
           await cx.listen(cx.when(() => ! this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 50)));
           if (this.p5.keyIsDown(this.p5.SHIFT)) {
               await cx.action(() => 
@@ -606,7 +327,7 @@ export class NotesView {
           }
       });
       
-      this.commands.register('(shift+) 3 - divide (multiply) fundamental by three', 'View', async (cx: CommandContext) => {
+      this.commands.register('(shift+) 3 - divide (multiply) fundamental by three', 'View', async (cx: Commands.Context) => {
           await cx.listen(cx.when(() => ! this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 51)));
           if (this.p5.keyIsDown(this.p5.SHIFT)) {
               await cx.action(() => 
@@ -618,7 +339,7 @@ export class NotesView {
           }
       });
       
-      this.commands.register('ctrl+(shift+) 2 - divide (multiply) time grid by two', 'View', async (cx: CommandContext) => {
+      this.commands.register('ctrl+(shift+) 2 - divide (multiply) time grid by two', 'View', async (cx: Commands.Context) => {
           await cx.listen(cx.when(() => this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 50)));
           if (this.p5.keyIsDown(this.p5.SHIFT)) {
               await cx.action(() => 
@@ -630,7 +351,7 @@ export class NotesView {
           }
       });
       
-      this.commands.register('ctrl+(shift+) 3  - divide (multiply) time grid by three', 'View', async (cx: CommandContext) => {
+      this.commands.register('ctrl+(shift+) 3  - divide (multiply) time grid by three', 'View', async (cx: Commands.Context) => {
           await cx.listen(cx.when(() => this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 51)));
           if (this.p5.keyIsDown(this.p5.SHIFT)) {
               await cx.action(() => 
@@ -642,7 +363,7 @@ export class NotesView {
           }
       });
 
-      this.commands.register('ctrl+s - save to location bar', 'File', async (cx: CommandContext) => {
+      this.commands.register('ctrl+s - save to location bar', 'File', async (cx: Commands.Context) => {
           await cx.listen(cx.when(() => this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 83)));
           await cx.action(() => {
               document.location.hash = Buffer.from(JSON.stringify(this.serialize())).toString("base64");
@@ -650,7 +371,7 @@ export class NotesView {
       });
 
 
-      this.commands.register('shift+click - add/remove note from selection', 'Edit', async (cx: CommandContext) => {
+      this.commands.register('shift+click - add/remove note from selection', 'Edit', async (cx: Commands.Context) => {
           const note = await cx.listen(
                                 cx.when(() => this.p5.keyIsDown(this.p5.SHIFT), 
                                         this.listenSelectNote(cx)));
@@ -667,7 +388,7 @@ export class NotesView {
       });
 
 
-      this.commands.register('drag handles - resize notes', 'hidden', async (cx: CommandContext) => {
+      this.commands.register('drag handles - resize notes', 'hidden', async (cx: Commands.Context) => {
           const onHandle = (note: Note) => {
               const noteBox = this.getNoteBox(note);
               if (noteBox.xf - 10 <= this.p5.mouseX && this.p5.mouseX <= noteBox.xf
@@ -743,7 +464,7 @@ export class NotesView {
       });
       
 
-      this.commands.register('d - duplicate notes', 'Tools', async (cx: CommandContext) => {
+      this.commands.register('d - duplicate notes', 'Tools', async (cx: Commands.Context) => {
           await cx.listen(cx.when(() => this.selectedNotes.length != 0, cx.key(this.p5, 68)));  // d
 
           const notes = await cx.action(() => {
@@ -786,7 +507,7 @@ export class NotesView {
       });
 
       
-      this.commands.register('click and drag - select and move notes', 'hidden', async (cx: CommandContext) => {
+      this.commands.register('click and drag - select and move notes', 'hidden', async (cx: Commands.Context) => {
           const note = await cx.listen(this.listenSelectNote(cx));
           this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
 
@@ -814,7 +535,7 @@ export class NotesView {
           });
       });
 
-      this.commands.register('click and drag - create new note', 'hidden', async (cx: CommandContext) => {
+      this.commands.register('click and drag - create new note', 'hidden', async (cx: Commands.Context) => {
           await cx.listen(cx.when(() => ! this.p5.keyIsDown(this.p5.SHIFT), cx.mouseDown()));
           const startCoords: Point  = await cx.action(() => {
               const coords = this.getMouseCoords();
@@ -850,7 +571,7 @@ export class NotesView {
           });
       });
 
-      this.commands.register('click and drag - box select notes', 'hidden', async (cx: CommandContext) => {
+      this.commands.register('click and drag - box select notes', 'hidden', async (cx: Commands.Context) => {
           await cx.listen(cx.when(
               () => this.p5.keyIsDown(this.p5.SHIFT) && this.mouseOverNote() === null, 
               cx.mouseDown()));
@@ -865,10 +586,10 @@ export class NotesView {
                   const minY = Math.min(startCoords.y, boxEnd.y);
                   const maxY = Math.max(startCoords.y, boxEnd.y);
               
-                  this.selectedNotes = dedup(startingNotes.concat(this.notes.filter(note => {
+                  this.selectedNotes = Utils.dedup(startingNotes.concat(this.notes.filter(note => {
                       const pitch = note.pitch.toNumber();
-                      return (intervalIntersects(minX, maxX, note.startTime, note.endTime) 
-                           && intervalIntersects(minY, maxY, pitch, pitch));
+                      return (Utils.intervalIntersects(minX, maxX, note.startTime, note.endTime) 
+                           && Utils.intervalIntersects(minY, maxY, pitch, pitch));
                   })));
 
                   return { control: 'REPEAT' }
@@ -890,7 +611,7 @@ export class NotesView {
       });
   }
 
-  listenSelectNote(cx: CommandContext): Listener<Note> {
+  listenSelectNote(cx: Commands.Context): Commands.Listener<Note> {
       return {
               mouseDown: () => {
                   const note = this.mouseOverNote();
