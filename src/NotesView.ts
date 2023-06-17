@@ -435,24 +435,6 @@ export class NotesView {
   handleMouseReleased(): void {
     this.commands.dispatch('mouseUp');
   }
-
-  /*
-  isNoteInSelectionBox(note: Note) {
-      const boxEnd = this.getMouseCoordsUnquantized();
-      const minX = Math.min(this.selectStart.x, boxEnd.x);
-      const maxX = Math.max(this.selectStart.x, boxEnd.x);
-      const minY = Math.min(this.selectStart.y, boxEnd.y);
-      const maxY = Math.max(this.selectStart.y, boxEnd.y);
-
-      const intervalIntersects = (a1: number, b1: number, a2: number, b2:number) => {
-          return ! (a2 > b1 || a1 > b2);
-      };
-
-      const pitch = note.pitch.toNumber();
-      return (intervalIntersects(minX, maxX, note.startTime, note.endTime) 
-              && intervalIntersects(minY, maxY, pitch, pitch));
-  }
-  */
   
   registerCommands() {
       this.commands.register('GCD', async (cx: CommandContext) => {
@@ -634,7 +616,7 @@ export class NotesView {
       });
 
       this.commands.register('Create new note', async (cx: CommandContext) => {
-          await cx.listen(cx.mouseDown());
+          await cx.listen(cx.when(() => ! this.p5.keyIsDown(this.p5.SHIFT), cx.mouseDown()));
           const startCoords: Point  = await cx.action(() => {
               const coords = this.getMouseCoords();
 
@@ -668,41 +650,68 @@ export class NotesView {
           });
       });
 
-      /*
+      this.commands.register('Box select notes', async (cx: CommandContext) => {
+          await cx.listen(cx.when(
+              () => this.p5.keyIsDown(this.p5.SHIFT) && this.mouseOverNote() === null, 
+              cx.mouseDown()));
+          const startCoords = this.getMouseCoordsUnquantized();
 
-      this.commands.register('Move notes', async (cx: CommandContext) => {
-          const note = await cx.consume(
-                                cx.when((note) => this.selectedNotes.includes(note),
-                                        this.listenSelectNote(cx)));
           await cx.listen({
+              action: { priority: 0, value: () => {
+                  const boxEnd = this.getMouseCoordsUnquantized();
+                  const minX = Math.min(startCoords.x, boxEnd.x);
+                  const maxX = Math.max(startCoords.x, boxEnd.x);
+                  const minY = Math.min(startCoords.y, boxEnd.y);
+                  const maxY = Math.max(startCoords.y, boxEnd.y);
+              
+                  this.selectedNotes = this.notes.filter(note => {
+                      const pitch = note.pitch.toNumber();
+                      return (intervalIntersects(minX, maxX, note.startTime, note.endTime) 
+                           && intervalIntersects(minY, maxY, pitch, pitch));
+                  });
+
+                  return { control: 'REPEAT' }
+              } },
               draw: () => {
-                  // move notes according to mouse position
-                  return { control: 'REPEAT' };
+                  const boxEnd = this.getMouseCoordsUnquantized();
+                  this.p5.strokeWeight(2);
+                  this.p5.stroke(255, 128, 0);
+                  this.p5.fill(255, 128, 0, 128);
+                  const x0 = this.viewport.mapX(startCoords.x, this.p5);
+                  const y0 = this.viewport.mapY(startCoords.y, this.p5)
+                  this.p5.rect(x0, y0, this.viewport.mapX(boxEnd.x, this.p5) - x0, this.viewport.mapY(boxEnd.y, this.p5) - y0);
+                  return { control: 'REPEAT' }
               },
               mouseUp: () => {
-                  return { control: 'CONSUME', value: null };
+                  return { control: 'CONSUME', value: undefined }
               },
-              cancel: () => {
-                  // put notes back to where they used to be
-              }
           });
       });
-      */
   }
 
   listenSelectNote(cx: CommandContext): Listener<Note> {
       return {
               mouseDown: () => {
-                  for (const note of this.notes) {
-                      const noteBox = this.getNoteBox(note);
-                      if (noteBox.x0 <= this.p5.mouseX && this.p5.mouseX <= noteBox.xf 
-                       && noteBox.y0 <= this.p5.mouseY && this.p5.mouseY <= noteBox.yf) {
-                          return { control: 'CONSUME', value: note };
-                       }
+                  const note = this.mouseOverNote();
+                  if (note === null) {
+                      return { control: 'REPEAT' };
                   }
-                  return { control: 'REPEAT' };
+                  else {
+                      return { control: 'CONSUME', value: note };
+                  }
               }
           };
+  }
+
+  mouseOverNote(): Note {
+      for (const note of this.notes) {
+          const noteBox = this.getNoteBox(note);
+          if (noteBox.x0 <= this.p5.mouseX && this.p5.mouseX <= noteBox.xf 
+           && noteBox.y0 <= this.p5.mouseY && this.p5.mouseY <= noteBox.yf) {
+              return note;
+          }
+      }
+      return null;
   }
 
 
@@ -829,18 +838,6 @@ export class NotesView {
         this.drawNote(note, false);
     }
 
-    /*
-    if (this.isSelecting) {
-        const boxEnd = this.getMouseCoordsUnquantized();
-        this.p5.strokeWeight(2);
-        this.p5.stroke(255, 128, 0);
-        this.p5.fill(255, 128, 0, 128);
-        const x0 = this.viewport.mapX(this.selectStart.x, this.p5);
-        const y0 = this.viewport.mapY(this.selectStart.y, this.p5)
-        this.p5.rect(x0, y0, this.viewport.mapX(boxEnd.x, this.p5) - x0, this.viewport.mapY(boxEnd.y, this.p5) - y0);
-    }
-    */
-    
     this.commands.dispatch('draw');
 
     if (this.selectedNotes.length >= 2) {
