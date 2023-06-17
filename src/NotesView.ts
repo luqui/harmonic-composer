@@ -436,138 +436,116 @@ export class NotesView {
   }
   
   registerCommands() {
-      this.commands.register('GCD', async (cx: CommandContext) => {
-          await cx.listen(cx.key(this.p5, 71)); // g       
+      const simpleKey = (name: string, key: number, cb: () => void) => {
+          this.commands.register(name, async (cx:CommandContext) => {
+              await cx.listen(cx.key(this.p5, key));
+              await cx.action(cb);
+          });
+      };
+
+      simpleKey('GCD (g)', 71, () => { 
           if (this.selectedNotes.length > 0) {
               const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
-              await cx.action(() => this.quantizationGrid.setYSnap(gcd));
+              this.quantizationGrid.setYSnap(gcd);
           }
       });
 
-      this.commands.register('LCM', async (cx: CommandContext) => {
-          await cx.listen(cx.key(this.p5, 76)); // l
+      simpleKey('LCM (l)', 76, () => {
           if (this.selectedNotes.length > 0) {
               const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
-              await cx.action(() => this.quantizationGrid.setYSnap(lcm));
+              this.quantizationGrid.setYSnap(lcm);
           }
       });
       
-      this.commands.register('Delete Notes', async (cx: CommandContext) => {
-          await cx.listen(cx.key(this.p5, 8));  // backspace
-          await cx.action(() => {
-              this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
-              this.selectedNotes = [];
-          });
+      simpleKey('Delete (backspace)', 8, () => {
+          this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
+          this.selectedNotes = [];
       });
 
-      this.commands.register('Decrease Velocity', async (cx: CommandContext) => {
-          await cx.listen(cx.key(this.p5, 188));  // ,
-          await cx.action(() => {
-              for (let note of this.selectedNotes) {
-                  note.velocity = note.velocity * 0.8 + 0 * 0.2;
-              }
-          });
+      simpleKey('Decrease Velocity (,)', 188, () => {
+          for (let note of this.selectedNotes) {
+              note.velocity = note.velocity * 0.8 + 0 * 0.2;
+          }
       });
 
-      this.commands.register('Increase Velocity', async (cx: CommandContext) => {
-          await cx.listen(cx.key(this.p5, 190));  // .
-          await cx.action(() => {
-              for (let note of this.selectedNotes) {
-                  note.velocity = note.velocity * 0.8 + 1 * 0.2;
-              }
-          });
+      simpleKey('Increase Velocity (.)', 190, () => {
+          for (let note of this.selectedNotes) {
+              note.velocity = note.velocity * 0.8 + 1 * 0.2;
+          }
       });
 
-      this.commands.register('Shift pitch grid down by 1 harmonic', async (cx: CommandContext) => {
-          await cx.listen(cx.key(this.p5, 65));  // a
-          await cx.action(() => {
-              if (this.selectedNotes.length != 1) {
-                  alert('Pivot: exactly one note must be selected');
+      simpleKey('Shift pitch grid down by 1 harmonic (a)', 65, () => {
+          if (this.selectedNotes.length != 1) {
+              alert('Pivot: exactly one note must be selected');
+              return;
+          }
+          const note = this.selectedNotes[0];
+          const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
+          if (z.isInteger()) {
+              this.quantizationGrid.setYSnap(note.pitch.div(z.add(N("1"))).normalize());
+          }
+          else if (z.inv().isInteger()) {
+              this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().sub(N("1"))).normalize());
+          }
+          else {
+              alert('Pivot: selected note must be on grid line');
+          }
+      });
+
+      simpleKey('Shift pitch gtid up by 1 harmonic (z)', 90, () => {
+          if (this.selectedNotes.length != 1) {
+              //alert('Pivot: exactly one note must be selected');
+              return;
+          }
+          const note = this.selectedNotes[0];
+          const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
+          if (z.inv().isInteger()) {
+              this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().add(N("1"))).normalize());
+          }
+          else if (z.isInteger()) {
+              this.quantizationGrid.setYSnap(note.pitch.div(z.sub(N("1"))).normalize());
+          }
+          else {
+              alert('Pivot: selected note must be on grid line');
+          }
+      });
+
+      simpleKey('Construct chord (c)', 67, () => {
+          if (this.selectedNotes.length == 0) {
+              alert('Chord: at least one note must be selected');
+              return;
+          }
+
+          const ratioString = window.prompt('Enter a ratio string such as 2:3:4');
+          if (ratioString === null) {
+              return;
+          }
+
+          const componentStrings = ratioString.split(':');
+          let ratios: number[] = [];
+          for (const component of componentStrings) {
+              if (! component.match(/^\d+$/) || Number(component) == 0) {
+                  alert('Chord: Invalid ratio string. I don\'t understand "' + component + '"');
                   return;
               }
-              const note = this.selectedNotes[0];
-              const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
-              if (z.isInteger()) {
-                  this.quantizationGrid.setYSnap(note.pitch.div(z.add(N("1"))).normalize());
-              }
-              else if (z.inv().isInteger()) {
-                  this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().sub(N("1"))).normalize());
-              }
-              else {
-                  alert('Pivot: selected note must be on grid line');
-              }
-          });
-      });
+              ratios.push(Number(component));
+          }
+          const [r0] = ratios.splice(0, 1);
 
-      this.commands.register('Shift pitch grid up by 1 harmonic', async (cx: CommandContext) => {
-          await cx.listen(cx.key(this.p5, 90));  // z
-          await cx.action(() => {
-              if (this.selectedNotes.length != 1) {
-                  //alert('Pivot: exactly one note must be selected');
-                  return;
-              }
-              const note = this.selectedNotes[0];
-              const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
-              if (z.inv().isInteger()) {
-                  this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().add(N("1"))).normalize());
-              }
-              else if (z.isInteger()) {
-                  this.quantizationGrid.setYSnap(note.pitch.div(z.sub(N("1"))).normalize());
-              }
-              else {
-                  alert('Pivot: selected note must be on grid line');
-              }
-          });
-      });
-
-      this.commands.register('Construct chord', async (cx: CommandContext) => {
-          await cx.listen(cx.key(this.p5, 67));   // c
-          await cx.action(() => {
-              if (this.selectedNotes.length == 0) {
-                  //alert('Chord: at least one note must be selected');
-                  return;
-              }
-
-              const startTime = this.selectedNotes[0].startTime;
-              const endTime = this.selectedNotes[0].endTime;
-
-              for (const note of this.selectedNotes) {
-                  if (note.startTime != startTime || note.endTime != endTime) {
-                      alert('Chord: if more than one note is selected, they must all have the same time range.  Sorry, not sure what the behavior should be otherwise.');
-                      return;
-                  }
-              }
-
-              const ratioString = window.prompt('Enter a ratio string such as 2:3:4', this.getRatioString(this.selectedNotes));
-              if (ratioString === null) {
-                  return;
-              }
-
-              let componentStrings = ratioString.split(':');
-              let ratios: number[] = [];
-              for (const component of componentStrings) {
-                  if (! component.match(/^\d+$/) || Number(component) == 0) {
-                      alert('Chord: Invalid component ' + component);
-                      return;
-                  }
-                  ratios.push(Number(component));
-              }
-
-              this.selectedNotes.sort((a,b) => a.pitch.lt(b.pitch) ? -1 : a.pitch.gt(b.pitch) ? 1 : 0);
-              const base = this.selectedNotes[0].pitch.div(ratios[0]);
-              this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
-
+          const sel = this.selectedNotes;
+          this.selectedNotes = [];
+          for (const note of sel) {
               for (const r of ratios) {
                   const newNote = {
-                      startTime: startTime,
-                      endTime: endTime,
-                      pitch: base.mul(r).normalize(),
-                      velocity: 0.75
+                      startTime: note.startTime,
+                      endTime: note.endTime,
+                      pitch: note.pitch.div(r0).mul(r).normalize(),
+                      velocity: note.velocity
                   };
                   this.notes.push(newNote);
                   this.selectedNotes.push(newNote);
               }
-          });
+          }
       });
 
       this.commands.register('Add/remove note from selection', async (cx: CommandContext) => {
