@@ -93,7 +93,7 @@ const sketch = (p: p5) => {
   };
 
   p.windowResized = () => {
-    p.resizeCanvas(p.windowWidth, p.windowHeight);
+    p.resizeCanvas(p.windowWidth - 50, p.windowHeight - 100);
   };
 
   p.keyPressed = () => {
