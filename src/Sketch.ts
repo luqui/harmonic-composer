@@ -19,6 +19,10 @@ async function createMidiOutputSelect(
   const select = document.createElement("select");
   container.appendChild(select);
 
+  const description = document.createElement("span");
+  description.style.marginLeft = "1em";
+  container.appendChild(description);
+
   const webSynthOption = document.createElement("option");
   webSynthOption.value = "web_synth";
   webSynthOption.textContent = "Web Synth";
@@ -37,11 +41,13 @@ async function createMidiOutputSelect(
 
     if (outputName === "web_synth") {
       onWebSynth();
+      description.innerHTML = "";
     } else {
       const midiOutput = outputs.get(outputName);
       if (midiOutput) {
         onMidi(midiOutput);
       }
+      description.innerHTML = "<i>- 15 voice MPE<i>";
     }
   });
 }
