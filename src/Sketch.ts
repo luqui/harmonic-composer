@@ -57,9 +57,12 @@ const sketch = (p: p5) => {
   let player: Player;
 
   p.setup = () => {
-    p.createCanvas(p.windowWidth - 50, p.windowHeight - 100);
+    const canvas = p.createCanvas(p.windowWidth - 50, p.windowHeight - 100);
     notesView = new NotesView(p);
     player = null;
+
+    canvas.mousePressed(() => notesView.handleMousePressed());
+    canvas.mouseReleased(() => notesView.handleMouseReleased());
 
     p.frameRate(24);
 
@@ -91,14 +94,6 @@ const sketch = (p: p5) => {
 
   p.windowResized = () => {
     p.resizeCanvas(p.windowWidth, p.windowHeight);
-  };
-
-  p.mousePressed = () => {
-    notesView.handleMousePressed();
-  };
-
-  p.mouseReleased = () => {
-    notesView.handleMouseReleased();
   };
 
   p.keyPressed = () => {
