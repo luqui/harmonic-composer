@@ -357,6 +357,10 @@ function intervalIntersects(a1: number, b1: number, a2: number, b2:number): bool
   return ! (a2 > b1 || a1 > b2);
 }
 
+function dedup<T>(xs: T[]): T[] {
+    return [...new Set(xs)];
+}
+
 
 type SerializedNote = { startTime: number, endTime: number, pitch: string, velocity: number };
 type Serialized = { notes: SerializedNote[] };
@@ -752,6 +756,7 @@ export class NotesView {
               () => this.p5.keyIsDown(this.p5.SHIFT) && this.mouseOverNote() === null, 
               cx.mouseDown()));
           const startCoords = this.getMouseCoordsUnquantized();
+          const startingNotes = this.selectedNotes;
 
           await cx.listen({
               action: { priority: 0, value: () => {
@@ -761,11 +766,11 @@ export class NotesView {
                   const minY = Math.min(startCoords.y, boxEnd.y);
                   const maxY = Math.max(startCoords.y, boxEnd.y);
               
-                  this.selectedNotes = this.notes.filter(note => {
+                  this.selectedNotes = dedup(startingNotes.concat(this.notes.filter(note => {
                       const pitch = note.pitch.toNumber();
                       return (intervalIntersects(minX, maxX, note.startTime, note.endTime) 
                            && intervalIntersects(minY, maxY, pitch, pitch));
-                  });
+                  })));
 
                   return { control: 'REPEAT' }
               } },
