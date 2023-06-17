@@ -246,7 +246,7 @@ type Command = (cx: CommandContext) => Promise<void>;
 
 type CommandState = CommandHooks<() => CommandStatus<CommandState>>;
 
-type CommandWithState = { command: Command, state: CommandState, description: string };
+type CommandWithState = { command: Command, state: CommandState, category: string, description: string };
 
 class CommandRunner {
     private commands: CommandWithState[];
@@ -263,10 +263,11 @@ class CommandRunner {
         });
     }
 
-    register(description: string, command: Command) {
+    register(description: string, category: string, command: Command) {
         const cs = {
             command: command,
             state: {},
+            category: category,
             description: description,
         };
         this.initState(cs);
@@ -274,16 +275,39 @@ class CommandRunner {
     }
 
     getHelpHTML() {
-        const table = document.createElement('table');
-        for (const c of this.commands) {
-            const tr = document.createElement('tr');
-            table.appendChild(tr);
-            const td = document.createElement('td');
-            tr.appendChild(td);
+        const div = document.createElement('div');
 
-            td.innerText = c.description;
+        const categories = dedup(this.commands.map(c => c.category)).sort();
+
+        for (const cat of categories) {
+            if (cat === 'hidden')
+                continue;
+
+            const table = document.createElement('table');
+            div.appendChild(table);
+            {
+                const thead = document.createElement('thead');
+                table.appendChild(thead);
+                const tr = document.createElement('tr');
+                thead.appendChild(tr);
+                const td = document.createElement('td');
+                tr.appendChild(td);
+
+                td.innerText = cat;
+            }
+
+            for (const c of this.commands) {
+                if (c.category === cat) {
+                    const tr = document.createElement('tr');
+                    table.appendChild(tr);
+                    const td = document.createElement('td');
+                    tr.appendChild(td);
+
+                    td.innerText = c.description;
+                }
+            }
         }
-        return table;
+        return div;
     }
 
     resolveActions() {
@@ -455,47 +479,55 @@ export class NotesView {
   }
   
   registerCommands() {
-      const simpleKey = (name: string, key: number, cb: () => void) => {
-          this.commands.register(name, async (cx:CommandContext) => {
+      const simpleKey = (name: string, category: string, key: number, cb: () => void) => {
+          this.commands.register(name, category, async (cx:CommandContext) => {
               await cx.listen(cx.key(this.p5, key));
               await cx.action(cb);
           });
       };
 
-
-      simpleKey('GCD (g)', 71, () => { 
-          if (this.selectedNotes.length > 0) {
-              const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
-              this.quantizationGrid.setYSnap(gcd);
+      const mustHaveSelection = (name: string) => {
+          if (this.selectedNotes.length === 0) {
+              alert(name + ': At least one note must be selected');
+              return false;
           }
+          return true;
+      };
+
+      simpleKey('g - select common subharmonic', 'Pitch Grid', 71, () => {
+          if (! mustHaveSelection('GCD')) return;
+          const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
+          this.quantizationGrid.setYSnap(gcd);
       });
 
-      simpleKey('LCM (l)', 76, () => {
-          if (this.selectedNotes.length > 0) {
-              const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
-              this.quantizationGrid.setYSnap(lcm);
-          }
+      simpleKey('l - select common harmonic', 'Pitch Grid', 76, () => {
+          if (! mustHaveSelection('LCM')) return;
+          const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
+          this.quantizationGrid.setYSnap(lcm);
       });
       
-      simpleKey('Delete (backspace)', 8, () => {
+      simpleKey('Backspace - delete notes', 'Edit', 8, () => {
+          if (! mustHaveSelection('Delete')) return;
           this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
           this.selectedNotes = [];
       });
 
-      simpleKey('Decrease Velocity (,)', 188, () => {
+      simpleKey(', - decreate velocity', 'Edit', 188, () => {
+          if (! mustHaveSelection('decrease velocity')) return;
           for (let note of this.selectedNotes) {
               note.velocity = note.velocity * 0.8 + 0 * 0.2;
           }
       });
 
-      simpleKey('Increase Velocity (.)', 190, () => {
+      simpleKey('. - increase Velocity', 'Edit', 190, () => {
+          if (! mustHaveSelection('decrease velocity')) return;
           for (let note of this.selectedNotes) {
               note.velocity = note.velocity * 0.8 + 1 * 0.2;
           }
       });
 
-      simpleKey('Shift pitch grid down by 1 harmonic (a)', 65, () => {
-          if (this.selectedNotes.length != 1) {
+      simpleKey('a - shift pitch grid down by 1 harmonic', 'Pitch Grid', 65, () => {
+          if (this.selectedNotes.length !== 1) {
               alert('Pivot: exactly one note must be selected');
               return;
           }
@@ -512,7 +544,7 @@ export class NotesView {
           }
       });
 
-      simpleKey('Shift pitch gtid up by 1 harmonic (z)', 90, () => {
+      simpleKey('z - shift pitch gtid up by 1 harmonic', 'Pitch Grid', 90, () => {
           if (this.selectedNotes.length != 1) {
               //alert('Pivot: exactly one note must be selected');
               return;
@@ -530,11 +562,8 @@ export class NotesView {
           }
       });
 
-      simpleKey('Construct chord (c)', 67, () => {
-          if (this.selectedNotes.length == 0) {
-              alert('Chord: at least one note must be selected');
-              return;
-          }
+      simpleKey('c - construct chord', 'Tools', 67, () => {
+          if (! mustHaveSelection('Chord')) return;
 
           const ratioString = window.prompt('Enter a ratio string such as 2:3:4');
           if (ratioString === null) {
@@ -568,7 +597,7 @@ export class NotesView {
           }
       });
       
-      this.commands.register('Show/hide help (h)', async (cx: CommandContext) => {
+      this.commands.register('h - Show/hide help', 'Tools', async (cx: CommandContext) => {
           await cx.listen(cx.key(this.p5, 72));  // h
           await cx.action(() => {
               const style = document.getElementById('help-container').style;
@@ -581,7 +610,7 @@ export class NotesView {
           });
       });
 
-      this.commands.register('Add/remove note from selection', async (cx: CommandContext) => {
+      this.commands.register('shift+click - add/remove note from selection', 'Edit', async (cx: CommandContext) => {
           const note = await cx.listen(
                                 cx.when(() => this.p5.keyIsDown(this.p5.SHIFT), 
                                         this.listenSelectNote(cx)));
@@ -597,7 +626,7 @@ export class NotesView {
           }
       });
 
-      this.commands.register('Resize notes', async (cx: CommandContext) => {
+      this.commands.register('drag handles - resize notes', 'hidden', async (cx: CommandContext) => {
           const onHandle = (note: Note) => {
               const noteBox = this.getNoteBox(note);
               if (noteBox.xf - 10 <= this.p5.mouseX && this.p5.mouseX <= noteBox.xf
@@ -673,7 +702,7 @@ export class NotesView {
       });
       
 
-      this.commands.register('Duplicate notes', async (cx: CommandContext) => {
+      this.commands.register('d - duplicate notes', 'Edit', async (cx: CommandContext) => {
           await cx.listen(cx.when(() => this.selectedNotes.length != 0, cx.key(this.p5, 68)));  // d
 
           const notes = await cx.action(() => {
@@ -716,7 +745,7 @@ export class NotesView {
       });
 
       
-      this.commands.register('Select and move notes', async (cx: CommandContext) => {
+      this.commands.register('click and drag - select and move notes', 'hidden', async (cx: CommandContext) => {
           const note = await cx.listen(this.listenSelectNote(cx));
           this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
 
@@ -744,7 +773,7 @@ export class NotesView {
           });
       });
 
-      this.commands.register('Create new note', async (cx: CommandContext) => {
+      this.commands.register('click and drag - create new note', 'hidden', async (cx: CommandContext) => {
           await cx.listen(cx.when(() => ! this.p5.keyIsDown(this.p5.SHIFT), cx.mouseDown()));
           const startCoords: Point  = await cx.action(() => {
               const coords = this.getMouseCoords();
@@ -780,7 +809,7 @@ export class NotesView {
           });
       });
 
-      this.commands.register('Box select notes', async (cx: CommandContext) => {
+      this.commands.register('click and drag - box select notes', 'hidden', async (cx: CommandContext) => {
           await cx.listen(cx.when(
               () => this.p5.keyIsDown(this.p5.SHIFT) && this.mouseOverNote() === null, 
               cx.mouseDown()));
