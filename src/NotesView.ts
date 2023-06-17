@@ -740,6 +740,7 @@ export class NotesView {
                   const note = mkNote();
                   if (note.startTime != note.endTime) {
                       this.notes.push(note);
+                      this.selectedNotes = [note];
                   }
                   return { control: 'CONSUME', value: undefined };
               }
