@@ -353,6 +353,12 @@ class CommandRunner {
 }
 
 
+function intervalIntersects(a1: number, b1: number, a2: number, b2:number): boolean {
+  return ! (a2 > b1 || a1 > b2);
+};
+
+
+
 type SerializedNote = { startTime: number, endTime: number, pitch: string, velocity: number };
 type Serialized = { notes: SerializedNote[] };
 
@@ -599,11 +605,31 @@ export class NotesView {
           }
       });
       
-      this.commands.register('Select note', async (cx: CommandContext) => {
+      this.commands.register('Select and move notes', async (cx: CommandContext) => {
           const note = await cx.listen(this.listenSelectNote(cx));
-          await cx.action(() => {
-              this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
-              this.selectedNotes = [note];
+          this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
+
+          let lastMouse: Point = await cx.action(() => {
+              if (! this.selectedNotes.includes(note)) {
+                  this.selectedNotes = [note];
+              }
+              return this.getMouseCoords();
+          });
+
+          await cx.listen({
+              action: { priority: 0, value: () => {
+                  const coords = this.getMouseCoords();
+                  for (const n of this.selectedNotes) {
+                      n.startTime += coords.x - lastMouse.x;
+                      n.endTime += coords.x - lastMouse.x;
+                      n.pitch = n.pitch.mul(coords.y.div(lastMouse.y)).normalize();
+                  }
+                  lastMouse = coords;
+                  return { control: 'REPEAT' };
+              } },
+              mouseUp: () => {
+                  return { control: 'CONSUME', value: undefined };
+              }
           });
       });
 
