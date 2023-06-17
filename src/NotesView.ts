@@ -127,7 +127,7 @@ type CommandHooks<T> = {
     keyUp?: T,
     mouseDown?: T,
     mouseUp?: T,
-    step?: T,
+    draw?: T,
     action?: { value: T, priority: number },
 }
 
@@ -137,7 +137,7 @@ function mapHooks<A,B>(f: (x:A) => B, hooks: CommandHooks<A>): CommandHooks<B> {
     if ('keyUp' in hooks)     ret.keyUp     = f(hooks.keyUp);
     if ('mouseDown' in hooks) ret.mouseDown = f(hooks.mouseDown);
     if ('mouseUp' in hooks)   ret.mouseUp   = f(hooks.mouseUp);
-    if ('step' in hooks)      ret.step      = f(hooks.step);
+    if ('draw' in hooks)      ret.draw      = f(hooks.draw);
     if ('action' in hooks)    ret.action    = { value: f(hooks.action.value), priority: hooks.action.priority };
     return ret;
 }
@@ -163,9 +163,11 @@ type Listener<T> = CommandHooks<() => CommandStatus<T>>;
 
 class CommandContext {
     private command: CommandWithState;
+    private commandRunner: CommandRunner;
 
-    constructor(command: CommandWithState) {
+    constructor(command: CommandWithState, commandRunner: CommandRunner) {
         this.command = command;
+        this.commandRunner = commandRunner;
     }
 
     async listen<T>(hooks: Listener<T> | Promise<Listener<T>>): Promise<T> {
@@ -179,6 +181,7 @@ class CommandContext {
         }
 
         return new Promise((resolve, reject) => {
+            let stateCache;
             const hookMap = (cb: () => CommandStatus<T>) => () => {
                 const status = cb();
 
@@ -189,14 +192,13 @@ class CommandContext {
                     return this.command.state;
                 }, status);
             };
-            console.log("Update state");
             this.command.state = mapHooks(hookMap, listener);
         });
     }
 
     key(p: p5, keyCode: number): Listener<null> {
         return {
-            'keyDown': () => {
+            keyDown: () => {
                 if (p.keyCode == keyCode) { 
                     return { control: 'CONSUME', value: null };
                 }
@@ -205,6 +207,12 @@ class CommandContext {
                 }
             }
         };
+    }
+
+    mouseDown(): Listener<null> {
+        return {
+            mouseDown: () => ({ control: 'CONSUME', value: null })
+        }
     }
 
     when<T>(p: (t: T) => boolean, listener: Listener<T>): Listener<T> {
@@ -219,20 +227,18 @@ class CommandContext {
                }, listener);
     }
 
-    action<T>(code: () => T, priority = 0): Promise<Listener<T>> {
-        console.log("Installing action listener");
+    action<T>(code: () => T, priority = 0): Promise<T> {
         return this.listen({
             action: {
                 priority: priority,
                 value: () => {
-                    console.log("Executing action");
                     const x = code();
-                    console.log("Action executed");
                     return { control: 'PROCEED', value: x };
                 }
             }
         });
     }
+
 }
 
 
@@ -250,7 +256,7 @@ class CommandRunner {
     }
 
     private initState(command: CommandWithState){
-        command.command(new CommandContext(command)).then(() => {
+        command.command(new CommandContext(command, this)).then(() => {
             // Start over when finished.
             // TODO cancel so cleanup can happen!
             this.initState(command);
@@ -292,9 +298,7 @@ class CommandRunner {
             // Nothing to do.
         }
         else if (maxActions.length == 1) {
-            console.log("Resolving action");
             const status = maxActions[0].state.action.value();
-            console.log("Action resolved");
             switch (status.control) {
                 case 'REPEAT':
                     break;
@@ -358,10 +362,6 @@ export class NotesView {
   private quantizationGrid: QuantizationGrid;
   private viewport: Viewport;
   private notes: Note[];
-  private isDragging: boolean;
-  private dragStart: Point;
-  private isSelecting: boolean;
-  private selectStart: { x: number, y: number };
   private selectedNotes: Note[];
   private instrument: Instrument;
   private commands: CommandRunner;
@@ -371,8 +371,6 @@ export class NotesView {
     this.viewport = new LogViewport(0, 36, 40, 108);
     this.quantizationGrid = new QuantizationGrid(1, N("216"));
     this.notes = [];
-    this.isDragging = false;
-    this.dragStart = null;
     this.selectedNotes = [];
     this.instrument = new ToneSynth();
     this.commands = new CommandRunner();
@@ -402,8 +400,6 @@ export class NotesView {
           pitch: N(n.pitch),
           velocity: n.velocity,
       }));
-      this.isDragging = false;
-      this.dragStart = null;
       this.selectedNotes = [];
   }
 
@@ -421,92 +417,20 @@ export class NotesView {
     };
   }
 
-  getDrawingNote(): Note {
-    const current = this.getMouseCoords();
-    return {
-      startTime: Math.min(this.dragStart.x, current.x),
-      endTime: Math.max(this.dragStart.x, current.x),
-      pitch: this.dragStart.y,
-      velocity: 0.75,
-    };
-  }
-
   handleMousePressed(): void {
     this.commands.dispatch('mouseDown');
-
-    if (this.isDragging) {
-        this.isDragging = false;
-        this.dragStart = null;
-        return;
-    }
-
-    for (const note of this.notes) {
-        const noteBox = this.getNoteBox(note,);
-        if (noteBox.x0 <= this.p5.mouseX && this.p5.mouseX <= noteBox.xf 
-         && noteBox.y0 <= this.p5.mouseY && this.p5.mouseY <= noteBox.yf) {
-            // Start moving drag
-            if (this.selectedNotes.includes(note)) {
-                this.isDragging = true;
-                this.dragStart = this.getMouseCoords();
-            }
-            return;
-        }
-    }
-
-    if (this.p5.keyIsDown(this.p5.SHIFT)) {
-        this.isSelecting = true;
-        this.selectStart = this.getMouseCoordsUnquantized();
-        return;
-    }
 
     if (this.p5.keyIsDown(this.p5.OPTION)) {
         this.quantizationGrid.setYSnap(this.getMouseCoords().y);
         return;
     }
-
-    // Start note creation drag
-    const coords = this.getMouseCoords();
-    this.instrument.startNote(Tone.now(), coords.y.toNumber(), 0.75);
-    this.isDragging = true;
-    this.selectedNotes = [];
-    this.dragStart = this.getMouseCoords();
-  }
-
-  handleMouseMoved(): void {
-      if (this.isDragging && this.selectedNotes.length > 0) {
-          const coords = this.getMouseCoords();
-          if (coords.x != this.dragStart.x || coords.y != this.dragStart.y) {
-              const diffX = coords.x - this.dragStart.x;
-              const diffY = coords.y.div(this.dragStart.y).normalize();
-              for (const note of this.selectedNotes) {
-                  note.startTime += diffX;
-                  note.endTime += diffX;
-                  note.pitch = note.pitch.mul(diffY).normalize();
-              }
-
-              this.dragStart = coords;
-          }
-      }
   }
 
   handleMouseReleased(): void {
-    if (this.isDragging && this.selectedNotes.length == 0) {
-      const newNote = this.getDrawingNote();
-      this.instrument.stopNote(Tone.now(), newNote.pitch.toNumber());
-
-      if (newNote.startTime != newNote.endTime) {
-        this.notes.push(newNote);
-        this.selectedNotes = [newNote];
-      }
-    }
-    else if (this.isSelecting) {
-        this.selectedNotes = this.notes.filter(n => this.isNoteInSelectionBox(n));
-    }
-
-    this.isSelecting = false;
-    this.isDragging = false;
+    this.commands.dispatch('mouseUp');
   }
 
+  /*
   isNoteInSelectionBox(note: Note) {
       const boxEnd = this.getMouseCoordsUnquantized();
       const minX = Math.min(this.selectStart.x, boxEnd.x);
@@ -522,6 +446,7 @@ export class NotesView {
       return (intervalIntersects(minX, maxX, note.startTime, note.endTime) 
               && intervalIntersects(minY, maxY, pitch, pitch));
   }
+  */
   
   registerCommands() {
       this.commands.register('GCD', async (cx: CommandContext) => {
@@ -663,7 +588,8 @@ export class NotesView {
                                 cx.when(() => this.p5.keyIsDown(this.p5.SHIFT), 
                                         this.listenSelectNote(cx)));
           if (this.selectedNotes.includes(note)) {
-              await cx.action(() => { this.selectedNotes = this.selectedNotes.filter(n => n != note) });
+              await cx.action(() => { 
+                  this.selectedNotes = this.selectedNotes.filter(n => n != note) });
           }
           else {
               await cx.action(() => {
@@ -674,20 +600,46 @@ export class NotesView {
       });
       
       this.commands.register('Select note', async (cx: CommandContext) => {
-          console.log("Initialization!");
           const note = await cx.listen(this.listenSelectNote(cx));
-          console.log("Event received!");
           await cx.action(() => {
-                  console.log("Action!");
-                  this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
-                  this.selectedNotes = [note];
-                  return { control: 'PROCEED', value: undefined };
-              });
-          console.log("Continuation!");
-          await cx.action(() => {
-                  console.log("Action 2!");
-                  return { control: 'PROCEED', value: undefined }
-              });
+              this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
+              this.selectedNotes = [note];
+          });
+      });
+
+      this.commands.register('Create new note', async (cx: CommandContext) => {
+          await cx.listen(cx.mouseDown());
+          const startCoords: Point  = await cx.action(() => {
+              const coords = this.getMouseCoords();
+
+              this.selectedNotes = [];
+              this.instrument.playNote(Tone.now(), 0.33, coords.y.toNumber(), 0.75);
+              return coords;
+          });
+
+          const mkNote = () => { 
+              const coords = this.getMouseCoords();
+              return {
+                  startTime: Math.min(startCoords.x, coords.x),
+                  endTime: Math.max(startCoords.x, coords.x),
+                  pitch: startCoords.y,
+                  velocity: 0.75,
+              };
+          };
+
+          await cx.listen({
+              draw: () => {
+                  this.drawNote(mkNote(), true);
+                  return { control: 'REPEAT' };
+              },
+              mouseUp: () => {
+                  const note = mkNote();
+                  if (note.startTime != note.endTime) {
+                      this.notes.push(note);
+                  }
+                  return { control: 'CONSUME', value: undefined };
+              }
+          });
       });
 
       /*
@@ -697,7 +649,7 @@ export class NotesView {
                                 cx.when((note) => this.selectedNotes.includes(note),
                                         this.listenSelectNote(cx)));
           await cx.listen({
-              step: () => {
+              draw: () => {
                   // move notes according to mouse position
                   return { control: 'REPEAT' };
               },
@@ -795,20 +747,6 @@ export class NotesView {
                   document.location.hash = Buffer.from(JSON.stringify(this.serialize())).toString("base64");
               }
           }
-          case 68: { //d -- duplicate
-              if (this.selectedNotes.length > 0) {
-                  for (const n of this.selectedNotes) {
-                      this.notes.push({
-                          startTime: n.startTime,
-                          endTime: n.endTime,
-                          pitch: n.pitch,
-                          velocity: n.velocity,
-                      });
-                  }
-                  this.isDragging = true;
-                  this.dragStart = this.getMouseCoords();
-              }
-          }
       }
   }
 
@@ -838,19 +776,7 @@ export class NotesView {
       this.p5.line(this.viewport.mapX(playhead, this.p5), 0, this.viewport.mapX(playhead, this.p5), this.p5.height);
   }
   
-  private counter: number = 0;
-
-  draw(): void {
-    this.handleMouseMoved();
-
-    this.commands.dispatch('step');
-    if (this.counter++ % 100 == 0) {
-        this.commands.resolveActions();
-    }
-    this.quantizationGrid.drawGrid(this.p5, this.viewport);
-
-    this.p5.colorMode(this.p5.RGB);
-    const drawNote = (note: Note, current: boolean) => {
+  drawNote(note: Note, current: boolean): void {
       let v = note.velocity;
 
       if (current || this.selectedNotes.includes(note)) {
@@ -866,16 +792,18 @@ export class NotesView {
 
       const noteBox = this.getNoteBox(note);
       this.p5.rect(noteBox.x0, noteBox.y0, noteBox.xf - noteBox.x0, noteBox.yf - noteBox.y0);
-    };
+  }
 
-    if (this.isDragging) {
-        drawNote(this.getDrawingNote(), true);
-    }
+  draw(): void {
+    this.quantizationGrid.drawGrid(this.p5, this.viewport);
+
+    this.p5.colorMode(this.p5.RGB);
 
     for (const note of this.notes) {
-        drawNote(note, false);
+        this.drawNote(note, false);
     }
 
+    /*
     if (this.isSelecting) {
         const boxEnd = this.getMouseCoordsUnquantized();
         this.p5.strokeWeight(2);
@@ -885,6 +813,9 @@ export class NotesView {
         const y0 = this.viewport.mapY(this.selectStart.y, this.p5)
         this.p5.rect(x0, y0, this.viewport.mapX(boxEnd.x, this.p5) - x0, this.viewport.mapY(boxEnd.y, this.p5) - y0);
     }
+    */
+    
+    this.commands.dispatch('draw');
 
     if (this.selectedNotes.length >= 2) {
         this.p5.fill(0, 0, 0);
@@ -893,5 +824,6 @@ export class NotesView {
         this.p5.textAlign(this.p5.RIGHT);
         this.p5.text(this.getRatioString(this.selectedNotes), 0, 10, this.p5.width, 50);
     }
+    
   }
 }
