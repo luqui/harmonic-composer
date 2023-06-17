@@ -246,7 +246,7 @@ type Command = (cx: CommandContext) => Promise<void>;
 
 type CommandState = CommandHooks<() => CommandStatus<CommandState>>;
 
-type CommandWithState = { command: Command, state: CommandState };
+type CommandWithState = { command: Command, state: CommandState, description: string };
 
 class CommandRunner {
     private commands: CommandWithState[];
@@ -267,9 +267,23 @@ class CommandRunner {
         const cs = {
             command: command,
             state: {},
+            description: description,
         };
         this.initState(cs);
         this.commands.push(cs);
+    }
+
+    getHelpHTML() {
+        const table = document.createElement('table');
+        for (const c of this.commands) {
+            const tr = document.createElement('tr');
+            table.appendChild(tr);
+            const td = document.createElement('td');
+            tr.appendChild(td);
+
+            td.innerText = c.description;
+        }
+        return table;
     }
 
     resolveActions() {
@@ -385,6 +399,7 @@ export class NotesView {
     this.commands = new CommandRunner();
 
     this.registerCommands();
+    document.getElementById('help-container').appendChild(this.commands.getHelpHTML());
   }
   
   setInstrument(instrument: Instrument) {
@@ -446,6 +461,7 @@ export class NotesView {
               await cx.action(cb);
           });
       };
+
 
       simpleKey('GCD (g)', 71, () => { 
           if (this.selectedNotes.length > 0) {
@@ -550,6 +566,19 @@ export class NotesView {
                   this.selectedNotes.push(newNote);
               }
           }
+      });
+      
+      this.commands.register('Show/hide help (h)', async (cx: CommandContext) => {
+          await cx.listen(cx.key(this.p5, 72));  // h
+          await cx.action(() => {
+              const style = document.getElementById('help-container').style;
+              if (style.display === 'none') {
+                  style.display = 'block';
+              }
+              else {
+                  style.display = 'none';
+              }
+          });
       });
 
       this.commands.register('Add/remove note from selection', async (cx: CommandContext) => {

@@ -3,11 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <title>Harmonic Composer</title>
+    <style>
+      #help-container {
+          position: absolute;
+          top: 50px;
+          right: 50px;
+          width: 400px;
+          height: 600px;
+          background: black;
+          color: white;
+          opacity: 50%;
+      }
+    </style>
   </head>
   <body>
     <div id="settings-container">
         Output: <span id="output-select-container"></span>
     </div>
+    <div id="help-container"></div>
     <div id="sketch-container"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
