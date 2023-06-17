@@ -128,15 +128,17 @@ type CommandHooks<T> = {
     mouseDown?: T,
     mouseUp?: T,
     step?: T,
+    action?: { value: T, priority: number },
 }
 
 function mapHooks<A,B>(f: (x:A) => B, hooks: CommandHooks<A>): CommandHooks<B> {
     let ret : CommandHooks<B> = {};
-    if ('keyDown' in hooks)   ret['keyDown']   = f(hooks['keyDown']);
-    if ('keyUp' in hooks)     ret['keyUp']     = f(hooks['keyUp']);
-    if ('mouseDown' in hooks) ret['mouseDown'] = f(hooks['mouseDown']);
-    if ('mouseUp' in hooks)   ret['mouseUp']   = f(hooks['mouseUp']);
-    if ('step' in hooks)      ret['step']      = f(hooks['step']);
+    if ('keyDown' in hooks)   ret.keyDown   = f(hooks.keyDown);
+    if ('keyUp' in hooks)     ret.keyUp     = f(hooks.keyUp);
+    if ('mouseDown' in hooks) ret.mouseDown = f(hooks.mouseDown);
+    if ('mouseUp' in hooks)   ret.mouseUp   = f(hooks.mouseUp);
+    if ('step' in hooks)      ret.step      = f(hooks.step);
+    if ('action' in hooks)    ret.action    = { value: f(hooks.action.value), priority: hooks.action.priority };
     return ret;
 }
 
@@ -187,6 +189,7 @@ class CommandContext {
                     return this.command.state;
                 }, status);
             };
+            console.log("Update state");
             this.command.state = mapHooks(hookMap, listener);
         });
     }
@@ -215,6 +218,21 @@ class CommandContext {
                    }
                }, listener);
     }
+
+    action<T>(code: () => T, priority = 0): Promise<Listener<T>> {
+        console.log("Installing action listener");
+        return this.listen({
+            action: {
+                priority: priority,
+                value: () => {
+                    console.log("Executing action");
+                    const x = code();
+                    console.log("Action executed");
+                    return { control: 'PROCEED', value: x };
+                }
+            }
+        });
+    }
 }
 
 
@@ -234,6 +252,7 @@ class CommandRunner {
     private initState(command: CommandWithState){
         command.command(new CommandContext(command)).then(() => {
             // Start over when finished.
+            // TODO cancel so cleanup can happen!
             this.initState(command);
         });
     }
@@ -247,9 +266,62 @@ class CommandRunner {
         this.commands.push(cs);
     }
 
+    resolveActions() {
+        let maxPrio: number = -Infinity;
+        let maxActions: CommandWithState[] = [];
+
+        for (const c of this.commands) {
+            if ('action' in c.state) {
+                if (c.state.action.priority > maxPrio) {
+                    for (const d of maxActions) {
+                        this.initState(d);
+                    }
+                    maxActions = [c];
+                    maxPrio = c.state.action.priority;
+                }
+                else if (c.state.action.priority == maxPrio) {
+                    maxActions.push(c);
+                }
+                else {
+                    this.initState(c);
+                }
+            }
+        }
+
+        if (maxActions.length == 0) {
+            // Nothing to do.
+        }
+        else if (maxActions.length == 1) {
+            console.log("Resolving action");
+            const status = maxActions[0].state.action.value();
+            console.log("Action resolved");
+            switch (status.control) {
+                case 'REPEAT':
+                    break;
+                case 'CANCEL':
+                    this.initState(maxActions[0]);
+                    break;
+                case 'PROCEED':
+                    if (maxActions[0].state !== status.value) {
+                        throw Error("Invariant error");
+                    }
+                    break;
+                case 'CONSUME':
+                    console.log("Actions may not consume", maxActions[0]);
+                    throw Error("Actions may not consume");
+            }
+        }
+        else {
+            console.log("More than one competing best action", maxActions);
+        }
+    }
+
     dispatch(hook: keyof CommandHooks<void>) {
         for (const c of this.commands) {
             if (hook in c.state) {
+                if (hook === 'action')
+                    throw Error('Cannot call dispatch on actions, they are resolved automatically');
+
                 const status = c.state[hook]();
                 if (status === null)
                     continue;
@@ -260,12 +332,19 @@ class CommandRunner {
                         this.initState(c);
                         break;
                     case 'PROCEED':
+                        if (c.state !== status.value) {
+                            throw Error("Invariant error");
+                        }
                         break;  // no change
                     case 'CONSUME':
+                        if (c.state !== status.value) {
+                            throw Error("Invariant error");
+                        }
                         return; // stop processing this event.
                 }
             }
         }
+        this.resolveActions();
     }
 }
 
@@ -449,7 +528,7 @@ export class NotesView {
           await cx.listen(cx.key(this.p5, 71)); // g       
           if (this.selectedNotes.length > 0) {
               const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
-              this.quantizationGrid.setYSnap(gcd);
+              await cx.action(() => this.quantizationGrid.setYSnap(gcd));
           }
       });
 
@@ -457,134 +536,158 @@ export class NotesView {
           await cx.listen(cx.key(this.p5, 76)); // l
           if (this.selectedNotes.length > 0) {
               const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
-              this.quantizationGrid.setYSnap(lcm);
+              await cx.action(() => this.quantizationGrid.setYSnap(lcm));
           }
       });
       
       this.commands.register('Delete Notes', async (cx: CommandContext) => {
           await cx.listen(cx.key(this.p5, 8));  // backspace
-          this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
-          this.selectedNotes = [];
+          await cx.action(() => {
+              this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
+              this.selectedNotes = [];
+          });
       });
 
       this.commands.register('Decrease Velocity', async (cx: CommandContext) => {
           await cx.listen(cx.key(this.p5, 188));  // ,
-          for (let note of this.selectedNotes) {
-              note.velocity = note.velocity * 0.8 + 0 * 0.2;
-          }
+          await cx.action(() => {
+              for (let note of this.selectedNotes) {
+                  note.velocity = note.velocity * 0.8 + 0 * 0.2;
+              }
+          });
       });
 
       this.commands.register('Increase Velocity', async (cx: CommandContext) => {
           await cx.listen(cx.key(this.p5, 190));  // .
-          for (let note of this.selectedNotes) {
-              note.velocity = note.velocity * 0.8 + 1 * 0.2;
-          }
+          await cx.action(() => {
+              for (let note of this.selectedNotes) {
+                  note.velocity = note.velocity * 0.8 + 1 * 0.2;
+              }
+          });
       });
 
       this.commands.register('Shift pitch grid down by 1 harmonic', async (cx: CommandContext) => {
           await cx.listen(cx.key(this.p5, 65));  // a
-          if (this.selectedNotes.length != 1) {
-              // alert('Pivot: exactly one note must be selected');
-              return;
-          }
-          const note = this.selectedNotes[0];
-          const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
-          if (z.isInteger()) {
-              this.quantizationGrid.setYSnap(note.pitch.div(z.add(N("1"))).normalize());
-          }
-          else if (z.inv().isInteger()) {
-              this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().sub(N("1"))).normalize());
-          }
-          else {
-              alert('Pivot: selected note must be on grid line');
-          }
+          await cx.action(() => {
+              if (this.selectedNotes.length != 1) {
+                  alert('Pivot: exactly one note must be selected');
+                  return;
+              }
+              const note = this.selectedNotes[0];
+              const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
+              if (z.isInteger()) {
+                  this.quantizationGrid.setYSnap(note.pitch.div(z.add(N("1"))).normalize());
+              }
+              else if (z.inv().isInteger()) {
+                  this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().sub(N("1"))).normalize());
+              }
+              else {
+                  alert('Pivot: selected note must be on grid line');
+              }
+          });
       });
 
       this.commands.register('Shift pitch grid up by 1 harmonic', async (cx: CommandContext) => {
           await cx.listen(cx.key(this.p5, 90));  // z
-          if (this.selectedNotes.length != 1) {
-              //alert('Pivot: exactly one note must be selected');
-              return;
-          }
-          const note = this.selectedNotes[0];
-          const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
-          if (z.inv().isInteger()) {
-              this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().add(N("1"))).normalize());
-          }
-          else if (z.isInteger()) {
-              this.quantizationGrid.setYSnap(note.pitch.div(z.sub(N("1"))).normalize());
-          }
-          else {
-              alert('Pivot: selected note must be on grid line');
-          }
+          await cx.action(() => {
+              if (this.selectedNotes.length != 1) {
+                  //alert('Pivot: exactly one note must be selected');
+                  return;
+              }
+              const note = this.selectedNotes[0];
+              const z = note.pitch.div(this.quantizationGrid.getYSnap()).normalize();
+              if (z.inv().isInteger()) {
+                  this.quantizationGrid.setYSnap(note.pitch.mul(z.inv().add(N("1"))).normalize());
+              }
+              else if (z.isInteger()) {
+                  this.quantizationGrid.setYSnap(note.pitch.div(z.sub(N("1"))).normalize());
+              }
+              else {
+                  alert('Pivot: selected note must be on grid line');
+              }
+          });
       });
 
       this.commands.register('Construct chord', async (cx: CommandContext) => {
           await cx.listen(cx.key(this.p5, 67));   // c
-          if (this.selectedNotes.length == 0) {
-              //alert('Chord: at least one note must be selected');
-              return;
-          }
-
-          const startTime = this.selectedNotes[0].startTime;
-          const endTime = this.selectedNotes[0].endTime;
-
-          for (const note of this.selectedNotes) {
-              if (note.startTime != startTime || note.endTime != endTime) {
-                  alert('Chord: if more than one note is selected, they must all have the same time range.  Sorry, not sure what the behavior should be otherwise.');
+          await cx.action(() => {
+              if (this.selectedNotes.length == 0) {
+                  //alert('Chord: at least one note must be selected');
                   return;
               }
-          }
 
-          const ratioString = window.prompt('Enter a ratio string such as 2:3:4', this.getRatioString(this.selectedNotes));
-          if (ratioString === null) {
-              return;
-          }
+              const startTime = this.selectedNotes[0].startTime;
+              const endTime = this.selectedNotes[0].endTime;
 
-          let componentStrings = ratioString.split(':');
-          let ratios: number[] = [];
-          for (const component of componentStrings) {
-              if (! component.match(/^\d+$/) || Number(component) == 0) {
-                  alert('Chord: Invalid component ' + component);
+              for (const note of this.selectedNotes) {
+                  if (note.startTime != startTime || note.endTime != endTime) {
+                      alert('Chord: if more than one note is selected, they must all have the same time range.  Sorry, not sure what the behavior should be otherwise.');
+                      return;
+                  }
+              }
+
+              const ratioString = window.prompt('Enter a ratio string such as 2:3:4', this.getRatioString(this.selectedNotes));
+              if (ratioString === null) {
                   return;
               }
-              ratios.push(Number(component));
-          }
 
-          this.selectedNotes.sort((a,b) => a.pitch.lt(b.pitch) ? -1 : a.pitch.gt(b.pitch) ? 1 : 0);
-          const base = this.selectedNotes[0].pitch.div(ratios[0]);
-          this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
+              let componentStrings = ratioString.split(':');
+              let ratios: number[] = [];
+              for (const component of componentStrings) {
+                  if (! component.match(/^\d+$/) || Number(component) == 0) {
+                      alert('Chord: Invalid component ' + component);
+                      return;
+                  }
+                  ratios.push(Number(component));
+              }
 
-          for (const r of ratios) {
-              const newNote = {
-                  startTime: startTime,
-                  endTime: endTime,
-                  pitch: base.mul(r).normalize(),
-                  velocity: 0.75
-              };
-              this.notes.push(newNote);
-              this.selectedNotes.push(newNote);
-          }
+              this.selectedNotes.sort((a,b) => a.pitch.lt(b.pitch) ? -1 : a.pitch.gt(b.pitch) ? 1 : 0);
+              const base = this.selectedNotes[0].pitch.div(ratios[0]);
+              this.notes = this.notes.filter(n => ! this.selectedNotes.includes(n));
+
+              for (const r of ratios) {
+                  const newNote = {
+                      startTime: startTime,
+                      endTime: endTime,
+                      pitch: base.mul(r).normalize(),
+                      velocity: 0.75
+                  };
+                  this.notes.push(newNote);
+                  this.selectedNotes.push(newNote);
+              }
+          });
       });
 
       this.commands.register('Add/remove note from selection', async (cx: CommandContext) => {
-          console.log("Adding handler");
           const note = await cx.listen(
                                 cx.when(() => this.p5.keyIsDown(this.p5.SHIFT), 
                                         this.listenSelectNote(cx)));
           if (this.selectedNotes.includes(note)) {
-              this.selectedNotes = this.selectedNotes.filter(n => n != note);
+              await cx.action(() => { this.selectedNotes = this.selectedNotes.filter(n => n != note) });
           }
           else {
-              this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
-              this.selectedNotes.push(note);
+              await cx.action(() => {
+                  this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
+                  this.selectedNotes.push(note);
+              });
           }
       });
       
       this.commands.register('Select note', async (cx: CommandContext) => {
+          console.log("Initialization!");
           const note = await cx.listen(this.listenSelectNote(cx));
-          this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
-          this.selectedNotes = [note];
+          console.log("Event received!");
+          await cx.action(() => {
+                  console.log("Action!");
+                  this.instrument.playNote(Tone.now(), 0.33, note.pitch.toNumber(), note.velocity);
+                  this.selectedNotes = [note];
+                  return { control: 'PROCEED', value: undefined };
+              });
+          console.log("Continuation!");
+          await cx.action(() => {
+                  console.log("Action 2!");
+                  return { control: 'PROCEED', value: undefined }
+              });
       });
 
       /*
@@ -735,8 +838,15 @@ export class NotesView {
       this.p5.line(this.viewport.mapX(playhead, this.p5), 0, this.viewport.mapX(playhead, this.p5), this.p5.height);
   }
   
+  private counter: number = 0;
+
   draw(): void {
     this.handleMouseMoved();
+
+    this.commands.dispatch('step');
+    if (this.counter++ % 100 == 0) {
+        this.commands.resolveActions();
+    }
     this.quantizationGrid.drawGrid(this.p5, this.viewport);
 
     this.p5.colorMode(this.p5.RGB);
