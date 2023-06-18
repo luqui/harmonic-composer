@@ -7,6 +7,8 @@ export interface Viewport {
   mapYinv(y: number, p: p5): number;
   translateX(ratio: number): void;
   translateY(ratio: number): void;
+  zoomX(ratio: number, about: number): void;
+  zoomY(ratio: number, about: number): void;
 }
 
 export class LogViewport {
@@ -30,16 +32,19 @@ export class LogViewport {
     return p.map(x, 0, p.width, this.minX, this.maxX);
   }
   
+  private noteToFreq(note: number): number {
+      return 440 * Math.pow(2, (note - 69) / 12);
+  }
+  private freqToNote(freq: number): number {
+    return 12 * Math.log2(freq / 440) + 69;
+  }
+  
   mapY(y: number, p: p5): number {
-
-    let note = 12 * Math.log2(y / 440) + 69;
-    return p.map(note, this.minNote, this.maxNote, p.height, 0);
+    return p.map(this.freqToNote(y), this.minNote, this.maxNote, p.height, 0);
   }
 
   mapYinv(y: number, p:p5): number {
-    let ynorm = p.map(y, p.height, 0, this.minNote, this.maxNote);
-    let hz = 440 * Math.pow(2, (ynorm - 69) / 12);
-    return hz;
+    return this.noteToFreq(p.map(y, p.height, 0, this.minNote, this.maxNote));
   }
   
   translateX(ratio: number): void {
@@ -52,5 +57,23 @@ export class LogViewport {
     const dnote = (this.maxNote - this.minNote) * ratio;
     this.minNote += dnote;
     this.maxNote += dnote;
+  }
+
+  zoomX(ratio: number, about: number) {
+      const oldWidth = this.maxX - this.minX;
+      const newWidth = oldWidth / ratio;
+      
+      this.minX = about - (about - this.minX) * newWidth / oldWidth;
+      this.maxX = this.minX + newWidth;
+  }
+
+  zoomY(ratio: number, about: number) {
+      about = this.freqToNote(about);
+
+      const oldHeight = this.maxNote - this.minNote;
+      const newHeight = oldHeight / ratio;
+      
+      this.minNote = about - (about - this.minNote) * newHeight / oldHeight;
+      this.maxNote = this.minNote + newHeight;
   }
 }

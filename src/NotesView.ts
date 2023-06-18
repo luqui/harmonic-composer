@@ -315,6 +315,35 @@ export class NotesView {
           });
       });
 
+      this.commands.register('-, = - zoom pitch axis  (ctrl+ for time)', 'View', async (cx: Commands.Context) => {
+          const [keyCode, ctrl] = await cx.listen({
+              keyDown: () => {
+                  if ([187,189].includes(this.p5.keyCode))
+                      return { control: 'CONSUME', value: [this.p5.keyCode, this.p5.keyIsDown(this.p5.CONTROL)] };
+                  else
+                      return { control: 'REPEAT' };
+              }
+          });
+          await cx.action(() => {
+              if (ctrl) {
+                  if (keyCode == 187) {
+                      this.viewport.zoomX(3/2, this.getMouseCoordsUnquantized().x);
+                  }
+                  else if (keyCode == 189) {
+                      this.viewport.zoomX(2/3, this.getMouseCoordsUnquantized().x);
+                  }
+              }
+              else {
+                  if (keyCode == 187) {
+                      this.viewport.zoomY(3/2, this.getMouseCoordsUnquantized().y);
+                  }
+                  else if (keyCode == 189) {
+                      this.viewport.zoomY(2/3, this.getMouseCoordsUnquantized().y);
+                  }
+              }
+          });
+      });
+
       this.commands.register('(shift+) 2 - divide (multiply) fundamental by two', 'View', async (cx: Commands.Context) => {
           await cx.listen(cx.when(() => ! this.p5.keyIsDown(this.p5.CONTROL), cx.key(this.p5, 50)));
           if (this.p5.keyIsDown(this.p5.SHIFT)) {
