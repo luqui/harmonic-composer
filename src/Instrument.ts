@@ -47,18 +47,55 @@ class AmplitudeControl {
     }
 }
 
+class Iso<T, U> {
+    public to : (x: T) => U;
+    public from : (x: U) => T;
+    constructor(to: (x: T) => U, from: (x: U) => T) {
+        this.to = to;
+        this.from = from;
+    }
+
+    static linearScale(min: number, max: number): Iso<number, number> {
+        return new Iso((x: number) => min + x * (max - min), 
+                       (y: number) => (y - min) / (max - min));
+    }
+
+    static powerScale(power: number): Iso<number, number> {
+        return new Iso((x: number) => Math.pow(x, power), (y: number) => Math.pow(y, 1/power));
+    }
+
+    static positiveScale(): Iso<number, number> {
+        return new Iso((x: number) => 1 / (1 - x) - 1, (y: number) => 1 - 1 / (y + 1));
+    }
+
+    compose<V>(i: Iso<U,V>): Iso<T, V> {
+        return new Iso((x: T) => i.to(this.to(x)), (y:V) => this.from(i.from(y)));
+    }
+}
+
 export class ToneSynth implements Instrument {
     private oscs: { [freq: number]: AmplitudeControl };
 
+    private attack: number;
+    private decay: number;
+    private sustain: number;
+    private release: number;
+    private type: string;
+
     constructor() {
         this.oscs = {};
+        this.attack = 0.05;
+        this.decay = 1;
+        this.sustain = 0.25;
+        this.release = 1;
+        this.type = "triangle";
     }
 
     startNote(when: number, freq: number, velocity: number): void {
         this.stopNote(0, freq);
 
-        const env = new Tone.AmplitudeEnvelope(0.05, 1, 0.25, 1).toDestination();
-        const osc = new Tone.Oscillator(freq, 'triangle').start();
+        const env = new Tone.AmplitudeEnvelope(this.attack, this.decay, this.sustain, this.release).toDestination();
+        const osc = new Tone.Oscillator(freq, this.type as Tone.ToneOscillatorType).start();
         osc.volume.value = 10 * Math.log2(velocity) - 10;
         const amp = new AmplitudeControl(osc, env);
         amp.triggerAttack(when);
@@ -83,6 +120,84 @@ export class ToneSynth implements Instrument {
         for (const freq in this.oscs) {
             this.stopNote(when, Number(freq));
         }
+    }
+
+    private makeTable(elements: HTMLElement[][]) {
+        const tableEl = document.createElement('table');
+        for (const row of elements) {
+            const tr = document.createElement('tr');
+            tableEl.appendChild(tr);
+
+            for (const col of row) {
+                const td = document.createElement('td');
+                tr.appendChild(td);
+
+                td.appendChild(col);
+            }
+        }
+        return tableEl;
+    }
+
+    private makeFader(label: string, value: number, scale: Iso<number, number>, onChange: (v: number) => void) {
+        const spanEl = document.createElement('span');
+        spanEl.setAttribute('class', 'fader');
+
+        const labelEl = document.createElement('label');
+        labelEl.innerText = label;
+
+        const inputEl = document.createElement('input');
+        inputEl.setAttribute('type', 'range');
+        inputEl.setAttribute('orient', 'vertical');
+        inputEl.setAttribute('min', '0');
+        inputEl.setAttribute('max', '1');
+        inputEl.setAttribute('step', 'any');
+        inputEl.value = String(scale.from(value));
+
+        const valueEl = document.createElement('span');
+        valueEl.innerText = value.toFixed(2);
+
+        inputEl.addEventListener('input', (e) => {
+            const scaledVal = scale.to(Number(inputEl.value));
+            valueEl.innerText = scaledVal.toFixed(2);
+            onChange(scaledVal);
+        });
+
+        spanEl.appendChild(this.makeTable([[labelEl], [inputEl], [valueEl]]));
+        return spanEl;
+    }
+    getParamsHTML() {
+        const div = document.createElement('div');
+
+        const typeDiv = document.createElement('div');
+        div.appendChild(typeDiv);
+        const typeEl = document.createElement('select');
+        typeDiv.innerText = "Type: ";
+        typeDiv.appendChild(typeEl);
+
+        for (const type of ["sine", "square", "triangle", "sawtooth"]) {
+            const option = document.createElement('option');
+            option.setAttribute('value', type);
+            option.innerText = type;
+            typeEl.appendChild(option);
+        }
+        typeEl.value = this.type;
+        typeEl.addEventListener('change', () => { this.type = typeEl.value; });
+
+
+        div.appendChild(
+            this.makeFader('A', this.attack,
+                           Iso.powerScale(3).compose(Iso.linearScale(0, 5)), (v: number) => { this.attack = v }))
+        div.appendChild(
+            this.makeFader('D', this.decay,
+                           Iso.powerScale(3).compose(Iso.linearScale(0, 20)), (v: number) => { this.decay = v }));
+        div.appendChild(
+            this.makeFader('S', this.sustain,
+                           Iso.linearScale(0, 1), (v: number) => { this.sustain = v }));
+        div.appendChild(
+            this.makeFader('R', this.release,
+                           Iso.powerScale(3).compose(Iso.linearScale(0, 5)), (v: number) => { this.release = v }));
+
+        return div;
     }
 }
 

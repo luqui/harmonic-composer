@@ -5,8 +5,8 @@ import { NotesView, Player } from "./NotesView";
 import { ExactNumberType, ExactNumber as N } from "exactnumber";
 
 async function createMidiOutputSelect(
-  onMidi: (output: WebMidi.MIDIOutput) => void,
-  onWebSynth: () => void
+  onMidi: (output: WebMidi.MIDIOutput, description: HTMLElement) => void,
+  onWebSynth: (description: HTMLElement) => void
 ) {
   const outputs = await initializeMidiAccess();
   const container = document.querySelector<HTMLDivElement>("#output-select-container");
@@ -39,17 +39,23 @@ async function createMidiOutputSelect(
     const target = e.target as HTMLSelectElement;
     const outputName = target.value;
 
+    description.innerHTML = "";
     if (outputName === "web_synth") {
-      onWebSynth();
-      description.innerHTML = "";
+      onWebSynth(description);
     } else {
       const midiOutput = outputs.get(outputName);
       if (midiOutput) {
-        onMidi(midiOutput);
+        onMidi(midiOutput, description);
       }
-      description.innerHTML = "<i>- 15 voice MPE<i>";
     }
   });
+
+  if (select.value == 'web_synth') {
+      onWebSynth(description);
+  }
+  else {
+      select.value = "web_synth";
+  }
 }
 
 const sketch = (p: p5) => {
@@ -83,11 +89,35 @@ const sketch = (p: p5) => {
     });
     
     createMidiOutputSelect(
-        (output: WebMidi.MIDIOutput) => {
+        (output: WebMidi.MIDIOutput, description: HTMLElement) => {
+            const container = document.getElementById('synth-params-container');
+            container.style.display = 'none';
+
+            description.innerHTML = "<i>- 15 voice MPE<i>";
+
             notesView.setInstrument(new MPEInstrument(output, 12));
         },
-        () => {
-            notesView.setInstrument(new ToneSynth());
+        (description: HTMLElement) => {
+            const toneSynth = new ToneSynth();
+            const container = document.getElementById('synth-params-container');
+            container.innerHTML = '';
+            container.appendChild(toneSynth.getParamsHTML());
+            container.style.display = 'none';
+            notesView.setInstrument(toneSynth);
+
+            description.innerHTML = '';
+            const button = document.createElement('input');
+            button.setAttribute('type', 'button');
+            button.setAttribute('value', 'Synth Params');
+            button.addEventListener('click', () => {
+                if (container.style.display === 'none') {
+                    container.style.display = 'block';
+                }
+                else {
+                    container.style.display = 'none';
+                }
+            });
+            description.appendChild(button);
         });
 
   };

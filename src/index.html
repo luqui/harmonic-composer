@@ -25,11 +25,37 @@
       #help-container tbody td {
           padding-left: 2em;
       }
+
+      #synth-params-container {
+          position: absolute;
+          /* width: 400px; */
+          /* height: 200px; */
+          background: #520;
+          border: 4px solid #310;
+          opacity: 70%;
+          color: white;
+          display: none;
+      }
+
+      input[type=range][orient=vertical]
+      {
+          writing-mode: bt-lr; /* IE */
+          -webkit-appearance: slider-vertical; /* Chromium */
+          width: 8px;
+          height: 100px;
+          padding: 0 5px;
+      }
+
+      .fader {
+          display: inline-block;
+          vertical-align: middle;
+      }
     </style>
   </head>
   <body>
     <div id="settings-container">
         Output: <span id="output-select-container"></span>
+        <div id='synth-params-container'></div>
     </div>
     <div id="help-container"></div>
     <div id="sketch-container"></div>
