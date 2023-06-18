@@ -1,7 +1,7 @@
 import p5 from "p5";
 import {QuantizationGrid} from "./QuantizationGrid";
 import {Viewport, LogViewport} from "./Viewport";
-import {ToneSynth, MPEInstrument, Instrument} from "./Instrument";
+import {ToneSynth, MPEInstrument, Instrument, PlayingNote} from "./Instrument";
 import {Scheduler} from "./Scheduler";
 import * as Commands from "./Commands";
 import * as Utils from "./Utils";
@@ -23,10 +23,6 @@ interface Point {
   x: number;
   y: ExactNumberType;
 }
-
-// Bit of a hack to make it so repeated notes don't futz things up.
-// Doesn't work 100%.
-const NOTE_END_EPSILON = 0.05;
 
 export class Player {
   private notes: Note[];
@@ -51,11 +47,17 @@ export class Player {
     for (const note of this.notes) {
         const pitch = note.pitch.toNumber();
         if (note.startTime >= playheadStart) {
+            let playingNote: PlayingNote = null;
             this.scheduler.schedule(this.startTime + (note.startTime - playheadStart) / tempo, (when: number) => {
-                instrument.startNote(when, pitch, note.velocity);
+                playingNote = instrument.startNote(when, pitch, note.velocity);
             });
-            this.scheduler.schedule(this.startTime + (note.endTime - playheadStart) / tempo - NOTE_END_EPSILON, (when: number) => {
-                instrument.stopNote(when, pitch);
+            this.scheduler.schedule(this.startTime + (note.endTime - playheadStart) / tempo, (when: number) => {
+                if (playingNote) {
+                    playingNote.stop(when);
+                }
+                else {
+                    console.log('Warning: Trying to stop a note before it has been created');
+                }
             });
         }
     }
@@ -304,7 +306,7 @@ export class NotesView {
               if (keyCode == 37) // <-
                   this.viewport.translateX(-0.25);
               else if (keyCode == 39) // ->
-                  this.viewport.translateX(-0.25);
+                  this.viewport.translateX(0.25);
               else if (keyCode == 38) // ^
                   this.viewport.translateY(0.25);
               else if (keyCode == 40) 

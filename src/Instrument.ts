@@ -5,12 +5,13 @@ declare var p5: p5mod;
 
 const CLEANUP_LATENCY : number = 0.250;
 
+export interface PlayingNote {
+    stop(when: number): void;
+}
+
 export interface Instrument {
     // Start playing a note at the given frequency and velocity (0-1)
-    startNote(when: number, freq: number, velocity: number): void;
-
-    // Stop playing the note at the given frequency in `secondsFromNow` seconds.
-    stopNote(when: number, freq: number): void;
+    startNote(when: number, freq: number, velocity: number): PlayingNote;
 
     // Play a note at a given frequency and duration.
     playNote(when: number, duration: number, freq: number, velocity: number): void;
@@ -73,8 +74,32 @@ class Iso<T, U> {
     }
 }
 
+class TonePlayingNote implements PlayingNote {
+    private osc: AmplitudeControl;
+    private oscs: Set<TonePlayingNote>;
+    constructor(osc: AmplitudeControl, oscs: Set<TonePlayingNote>) {
+        this.osc = osc;
+        this.oscs = oscs;
+
+        this.oscs.add(this);
+    }
+
+    stop(when: number): void {
+        this.osc.triggerRelease(when);
+        this.oscs.delete(this);
+    }
+}
+
+function cloneSet<T>(s : Set<T>): Set<T> {
+    let r: Set<T> = new Set();
+    for (const x of s) {
+        r.add(x);
+    }
+    return r;
+}
+
 export class ToneSynth implements Instrument {
-    private oscs: { [freq: number]: AmplitudeControl };
+    private oscs: Set<TonePlayingNote>;
 
     private attack: number;
     private decay: number;
@@ -83,7 +108,7 @@ export class ToneSynth implements Instrument {
     private type: string;
 
     constructor() {
-        this.oscs = {};
+        this.oscs = new Set();
         this.attack = 0.05;
         this.decay = 1;
         this.sustain = 0.25;
@@ -91,34 +116,26 @@ export class ToneSynth implements Instrument {
         this.type = "triangle";
     }
 
-    startNote(when: number, freq: number, velocity: number): void {
-        this.stopNote(0, freq);
-
+    startNote(when: number, freq: number, velocity: number): PlayingNote {
         const env = new Tone.AmplitudeEnvelope(this.attack, this.decay, this.sustain, this.release).toDestination();
         const osc = new Tone.Oscillator(freq, this.type as Tone.ToneOscillatorType).start();
         osc.volume.value = 10 * Math.log2(velocity) - 10;
         const amp = new AmplitudeControl(osc, env);
         amp.triggerAttack(when);
-        this.oscs[freq] = amp;
-    }
 
-    stopNote(when:number, freq: number): void {
-        if (this.oscs[freq]) {
-            const osc = this.oscs[freq];
-            delete this.oscs[freq];
+        return new TonePlayingNote(amp, this.oscs);
 
-            osc.triggerRelease(when);
-        }
     }
 
     playNote(when: number, duration: number, freq: number, velocity: number): void {
-        this.startNote(when, freq, velocity);
-        this.stopNote(when + duration, freq);
+        const osc = this.startNote(when, freq, velocity);
+        osc.stop(when + duration);
     }
 
     stopAllNotes(when: number): void {
-        for (const freq in this.oscs) {
-            this.stopNote(when, Number(freq));
+        const oscs = cloneSet(this.oscs);
+        for (const osc of oscs) {
+            osc.stop(when);
         }
     }
 
@@ -216,18 +233,49 @@ export async function initializeMidiAccess(): Promise<ReadonlyMap<string, WebMid
     return midiAccess.outputs;
 }
 
+
+interface MPEInstrumentProxy {
+    midiOutput: WebMidi.MIDIOutput;
+    playingNotes: Set<MPEPlayingNote>;
+    availableChannels: number[];
+    toMidiTime(seconds: number): number;
+}
+
+class MPEPlayingNote implements PlayingNote {
+    private channel: number;
+    private note: number;
+    private instrument: MPEInstrumentProxy;
+
+    constructor(channel: number, note: number, instrument: MPEInstrumentProxy) {
+        this.channel = channel;
+        this.note = note;
+        this.instrument = instrument;
+        this.instrument.playingNotes.add(this);
+    }
+
+    stop(when: number) {
+        const now = window.performance.now()
+        const stopTime = this.instrument.toMidiTime(when);
+        this.instrument.midiOutput.send([0x90 + this.channel, this.note, 0], stopTime);
+
+        this.instrument.availableChannels.push(this.channel);
+        this.instrument.playingNotes.delete(this);
+    }
+}
+
 const PITCH_BEND_RANGE = 2;
-export class MPEInstrument implements Instrument {
-  private midiOutput: WebMidi.MIDIOutput;
-  private availableChannels: number[];
-  private channelMap: Map<number, number>;
-  private numChannels: number;
+
+export class MPEInstrument implements MPEInstrumentProxy {
+  midiOutput: WebMidi.MIDIOutput;
+  availableChannels: number[];
+  numChannels: number;
+  playingNotes: Set<MPEPlayingNote>
 
   constructor(midiOutput: WebMidi.MIDIOutput, numChannels: number) {
     this.midiOutput = midiOutput;
     this.numChannels = numChannels;
     this.availableChannels = Array.from({ length: numChannels }, (_, i) => i+1);
-    this.channelMap = new Map<number, number>();
+    this.playingNotes = new Set();
 
     this.setupMPE();
   }
@@ -254,49 +302,40 @@ export class MPEInstrument implements Instrument {
     }
   }
 
-  startNote(when: number, freq: number, velocity: number): void {
-    if (!this.midiOutput || this.availableChannels.length === 0) {
+  startNote(when: number, freq: number, velocity: number): MPEPlayingNote {
+    if (!this.midiOutput)
+        return;
+
+    if (this.availableChannels.length === 0) {
+      console.log("Dropped note, too many playing notes");
       return;
     }
 
     const whenM = this.toMidiTime(when);
 
     const channel = this.availableChannels.splice(0, 1)[0];
-    this.channelMap.set(freq, channel);
 
     const [note, pitchBend] = this.frequencyToMidiAndPitchBend(freq);
     this.midiOutput.send([0x90 + channel, note, Math.floor(127*velocity)], whenM);
     this.midiOutput.send([0xE0 + channel, pitchBend & 0x7F, (pitchBend >> 7) & 0x7F], whenM);
-  }
 
-  stopNote(when: number, freq: number): void {
-    const channel = this.channelMap.get(freq);
-    if (!this.midiOutput || channel === undefined) {
-      return;
-    }
-
-    const [note] = this.frequencyToMidiAndPitchBend(freq);
-    this.midiOutput.send([0x90 + channel, note, 0], this.toMidiTime(when));
-
-    this.availableChannels.push(channel);
-    this.channelMap.delete(freq);
+    const playingNote = new MPEPlayingNote(channel, note, this);
+    return playingNote;
   }
 
   playNote(when: number, duration: number, freq: number, velocity: number): void {
-    this.startNote(when, freq, velocity);
-    this.stopNote(when + duration, freq);
+    const note = this.startNote(when, freq, velocity);
+    note.stop(when + duration);
   }
 
   stopAllNotes(when: number) {
-      this.channelMap.forEach((ch, freq) => {
-          const [note] = this.frequencyToMidiAndPitchBend(freq);
-          this.midiOutput.send([0x90 + ch, note, 0], this.toMidiTime(when));
-      });
-      this.channelMap = new Map<number, number>;
-      this.availableChannels = Array.from({ length: this.numChannels }, (_, i) => i + 1);
+      const playingNotes = cloneSet(this.playingNotes);
+      for (const n of playingNotes) {
+          n.stop(when);
+      }
   }
 
-  private toMidiTime(when: number): number {
+  toMidiTime(when: number): number {
       return window.performance.now() - 1000*Tone.now() + 1000*when;
   }
 
