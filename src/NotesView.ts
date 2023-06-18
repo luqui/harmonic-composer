@@ -214,7 +214,7 @@ export class NotesView {
           }
       });
 
-      simpleKey('. - increase Velocity', 'Edit', 190, () => {
+      simpleKey('. - increase velocity', 'Edit', 190, () => {
           if (! mustHaveSelection('decrease velocity')) return;
           for (let note of this.selectedNotes) {
               note.velocity = note.velocity * 0.8 + 1 * 0.2;
