@@ -5,23 +5,24 @@ import {ToneSynth, MPEInstrument, Instrument} from "./Instrument";
 import {Scheduler} from "./Scheduler";
 import * as Commands from "./Commands";
 import * as Utils from "./Utils";
+import * as FileType from "./FileType";
 import {ExactNumber as N, ExactNumberType} from "exactnumber";
 import * as Tone from "tone";
 
 const NOTE_HEIGHT = 10;
 
-interface Note {
+export interface Note {
   startTime: number;
   endTime: number;
   pitch: ExactNumberType;
   velocity: number; // 0-1
 }
 
+
 interface Point {
   x: number;
   y: ExactNumberType;
 }
-
 
 // Bit of a hack to make it so repeated notes don't futz things up.
 // Doesn't work 100%.
@@ -71,9 +72,6 @@ export class Player {
   }
 };
 
-type SerializedNote = { startTime: number, endTime: number, pitch: string, velocity: number };
-type Serialized = { notes: SerializedNote[] };
-
 export class NotesView {
   private p5: p5;
   private quantizationGrid: QuantizationGrid;
@@ -100,7 +98,7 @@ export class NotesView {
       this.instrument = instrument;
   }
 
-  serialize(): Serialized {
+  serialize(): FileType.Score {
       return {
           notes: this.notes.map((n: Note) => ({ 
               startTime: n.startTime, 
@@ -111,8 +109,9 @@ export class NotesView {
       };
   }
 
-  deserialize(s: Serialized): void {
-      this.notes = s.notes.map((n: SerializedNote) => ({
+  deserialize(obj: object): void {
+      const score = FileType.loadScore(obj);
+      this.notes = score.notes.map((n: FileType.Note) => ({
           startTime: n.startTime,
           endTime: n.endTime,
           pitch: N(n.pitch),
