@@ -214,28 +214,33 @@ export class Runner {
         }
 
         if (maxActions.length == 0) {
-            // Nothing to do.
+            // Nothing to do
+            return;
         }
-        else if (maxActions.length == 1) {
-            const status = maxActions[0].state.action.value();
-            switch (status.control) {
-                case 'REPEAT':
-                    break;
-                case 'CANCEL':
-                    this.initState(maxActions[0]);
-                    break;
-                case 'PROCEED':
-                    if (maxActions[0].state !== status.value) {
-                        throw Error("Invariant error");
-                    }
-                    break;
-                case 'CONSUME':
-                    console.log("Actions may not consume", maxActions[0]);
-                    throw Error("Actions may not consume");
+        if (maxActions.length >= 2) {
+            console.log("More than one competing best action", maxActions, "(choosing first)");
+            for (let i = 1; i < maxActions.length; i++) {
+                this.initState(maxActions[i]);
             }
+            maxActions = [maxActions[0]];
         }
-        else {
-            console.log("More than one competing best action", maxActions);
+
+        // now maxActions.length = 1
+        const status = maxActions[0].state.action.value();
+        switch (status.control) {
+            case 'REPEAT':
+                break;
+            case 'CANCEL':
+                this.initState(maxActions[0]);
+                break;
+            case 'PROCEED':
+                if (maxActions[0].state !== status.value) {
+                    throw Error("Invariant error");
+                }
+                break;
+            case 'CONSUME':
+                console.log("Actions may not consume", maxActions[0]);
+                throw Error("Actions may not consume");
         }
     }
 
