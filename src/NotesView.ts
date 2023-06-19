@@ -214,13 +214,13 @@ export class NotesView {
 
       simpleKey('g - select common subharmonic ("gcd")', 'View', 71, () => {
           if (! mustHaveSelection('GCD')) return;
-          const gcd = this.selectedNotes.reduce((accum,n) => N.gcd(accum, n.pitch).normalize(), N("0"));
+          const gcd = this.selectedNotes.map(n => n.pitch).reduce((accum,p) => N.gcd(accum, p).normalize());
           this.quantizationGrid.setYSnap(gcd);
       });
 
       simpleKey('l - select common harmonic ("lcm")', 'View', 76, () => {
           if (! mustHaveSelection('LCM')) return;
-          const lcm = this.selectedNotes.reduce((accum,n) => N.lcm(accum, n.pitch).normalize(), N("1"));
+          const lcm = this.selectedNotes.map(n => n.pitch).reduce((accum,p) => N.lcm(accum, p).normalize());
           this.quantizationGrid.setYSnap(lcm);
       });
       
