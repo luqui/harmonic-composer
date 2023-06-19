@@ -11,11 +11,22 @@ import * as Tone from "tone";
 
 const NOTE_HEIGHT = 10;
 
-export interface Note {
+class Note {
   startTime: number;
   endTime: number;
   pitch: ExactNumberType;
-  velocity: number; // 0-1
+  velocity: number;  // [0,1]
+
+  constructor(startTime: number, endTime: number, pitch: ExactNumberType, velocity: number) {
+      this.startTime = startTime;
+      this.endTime = endTime;
+      this.pitch = pitch;
+      this.velocity = velocity;
+  }
+
+  clone(): Note {
+      return new Note(this.startTime, this.endTime, this.pitch, this.velocity);
+  }
 }
 
 
@@ -113,12 +124,7 @@ export class NotesView {
 
   deserialize(obj: object): void {
       const score = FileType.loadScore(obj);
-      this.notes = score.notes.map((n: FileType.Note) => ({
-          startTime: n.startTime,
-          endTime: n.endTime,
-          pitch: N(n.pitch),
-          velocity: n.velocity,
-      }));
+      this.notes = score.notes.map((n: FileType.Note) => new Note(n.startTime, n.endTime, N(n.pitch), n.velocity));
       this.selectedNotes = [];
   }
 
@@ -281,12 +287,8 @@ export class NotesView {
           this.selectedNotes = [];
           for (const note of sel) {
               for (const r of ratios) {
-                  const newNote = {
-                      startTime: note.startTime,
-                      endTime: note.endTime,
-                      pitch: note.pitch.div(r0).mul(r).normalize(),
-                      velocity: note.velocity
-                  };
+                  const newNote = note.clone();
+                  newNote.pitch = note.pitch.div(r0).mul(r).normalize(),
                   this.notes.push(newNote);
                   this.selectedNotes.push(newNote);
               }
@@ -503,12 +505,12 @@ export class NotesView {
               return r;
           });
           const initialMouse: Point = this.getMouseCoords();
-          const translate = (note: Note, mouse: Point) => ({
-              startTime: note.startTime + mouse.x - initialMouse.x,
-              endTime: note.endTime + mouse.x - initialMouse.x,
-              pitch: note.pitch,
-              velocity: note.velocity,
-          });
+          const translate = (note: Note, mouse: Point) => {
+              let r = note.clone();
+              r.startTime += mouse.x - initialMouse.x;
+              r.endTime += mouse.x - initialMouse.x;
+              return r;
+          };
           await cx.listen({
               draw: () => {
                   const mouse = this.getMouseCoords();
@@ -577,12 +579,7 @@ export class NotesView {
 
           const mkNote = () => { 
               const coords = this.getMouseCoords();
-              return {
-                  startTime: Math.min(startCoords.x, coords.x),
-                  endTime: Math.max(startCoords.x, coords.x),
-                  pitch: startCoords.y,
-                  velocity: 0.75,
-              };
+              return new Note(Math.min(startCoords.x, coords.x), Math.max(startCoords.x, coords.x), startCoords.y, 0.75);
           };
 
           await cx.listen({
