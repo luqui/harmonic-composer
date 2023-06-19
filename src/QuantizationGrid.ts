@@ -51,7 +51,8 @@ export class QuantizationGrid {
         p.strokeWeight(1);
         
         if (this.xsnap != 0) {
-            const x0 = viewport.mapXinv(0, p);
+            const xBoundLeft = viewport.mapXinv(0, p);
+            const x0 = Math.ceil(xBoundLeft / this.xsnap) * this.xsnap;
             const xf = viewport.mapXinv(p.width, p);
             for (let x = x0; x < xf; x += this.xsnap) {
               p.line(viewport.mapX(x, p), 0, viewport.mapX(x, p), p.height);
