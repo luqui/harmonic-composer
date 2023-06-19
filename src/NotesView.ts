@@ -93,6 +93,7 @@ export class NotesView {
   private selectedNotes: Note[];
   private instrument: Instrument;
   private commands: Commands.Runner;
+  private tempo: number;
 
   constructor(p: p5) {
     this.p5 = p;
@@ -102,13 +103,28 @@ export class NotesView {
     this.selectedNotes = [];
     this.instrument = new ToneSynth();
     this.commands = new Commands.Runner();
+    this.tempo = 4;
 
     this.registerCommands();
     document.getElementById('help-container').appendChild(this.commands.getHelpHTML());
+
+    this.makeTempoBox();
   }
   
   setInstrument(instrument: Instrument) {
       this.instrument = instrument;
+  }
+
+  makeTempoBox() {
+      const div = document.getElementById('tempo-control');
+      div.innerText = "Tempo:";
+      const input = document.createElement('input');
+      div.appendChild(input);
+      input.setAttribute('type', 'text');
+      input.setAttribute('value', String(this.tempo*15));
+      input.addEventListener('change', () => {
+          this.tempo = Number(input.value)/15;
+      });
   }
 
   serialize(): FileType.Score {
@@ -669,7 +685,7 @@ export class NotesView {
   }
 
   play(): Player {
-      return new Player(this.notes, 4, this.instrument, this.viewport.mapXinv(0, this.p5));
+      return new Player(this.notes, this.tempo, this.instrument, this.viewport.mapXinv(0, this.p5));
   }
 
   getNoteBox(note: Note): { x0: number, y0: number, xf: number, yf: number } {
