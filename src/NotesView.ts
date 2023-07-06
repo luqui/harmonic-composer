@@ -476,7 +476,7 @@ export class NotesView {
           const refTimes = selection.map(n => ({ startTime: n.startTime, endTime: n.endTime }));
 
           await cx.listen({
-              action: { priority: 0, value: () => {
+              draw: () => {
                   const coords = this.getMouseCoords();
 
                   for (let i = 0; i < selection.length; i++) {
@@ -499,9 +499,7 @@ export class NotesView {
                           }
                       }
                   }
-                  return { control: 'REPEAT' };
-              } },
-              draw: () => {
+                  
                   this.p5.cursor('col-resize');
                   return { control: 'REPEAT' };
               },
@@ -567,7 +565,7 @@ export class NotesView {
           });
 
           await cx.listen({
-              action: { priority: 0, value: () => {
+              draw: () => {
                   const coords = this.getMouseCoords();
                   for (const n of this.selectedNotes) {
                       n.startTime += coords.x - lastMouse.x;
@@ -575,8 +573,8 @@ export class NotesView {
                       n.pitch = n.pitch.mul(coords.y.div(lastMouse.y)).normalize();
                   }
                   lastMouse = coords;
-                  return { control: 'REPEAT' };
-              } },
+                  return { control: 'REPEAT', value: undefined };
+              },
               mouseUp: () => {
                   return { control: 'CONSUME', value: undefined };
               }
@@ -622,7 +620,8 @@ export class NotesView {
           const startingNotes = this.selectedNotes;
 
           await cx.listen({
-              action: { priority: 0, value: () => {
+              draw: () => {
+                  // Select notes
                   const boxEnd = this.getMouseCoordsUnquantized();
                   const minX = Math.min(startCoords.x, boxEnd.x);
                   const maxX = Math.max(startCoords.x, boxEnd.x);
@@ -635,15 +634,12 @@ export class NotesView {
                            && Utils.intervalIntersects(minY, maxY, pitch, pitch));
                   })));
 
-                  return { control: 'REPEAT' }
-              } },
-              draw: () => {
-                  const boxEnd = this.getMouseCoordsUnquantized();
+                  // Draw selection box
                   this.p5.strokeWeight(2);
                   this.p5.stroke(255, 128, 0);
                   this.p5.fill(255, 128, 0, 128);
                   const x0 = this.viewport.mapX(startCoords.x, this.p5);
-                  const y0 = this.viewport.mapY(startCoords.y, this.p5)
+                  const y0 = this.viewport.mapY(startCoords.y, this.p5);
                   this.p5.rect(x0, y0, this.viewport.mapX(boxEnd.x, this.p5) - x0, this.viewport.mapY(boxEnd.y, this.p5) - y0);
                   return { control: 'REPEAT' }
               },

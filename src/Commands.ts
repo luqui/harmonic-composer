@@ -135,9 +135,11 @@ export class Runner {
     }
 
     private initState(command: CommandWithState){
+        console.log("Start ", command.description);
         command.command(new Context(command, this)).then(() => {
             // Start over when finished.
             // TODO cancel so cleanup can happen!
+            console.log("End ", command.description);
             this.initState(command);
         });
     }
@@ -226,10 +228,13 @@ export class Runner {
         }
 
         // now maxActions.length = 1
+        console.log("Running action from ", maxActions[0].description, maxActions[0]);
+
         const status = maxActions[0].state.action.value();
         switch (status.control) {
             case 'REPEAT':
-                break;
+                console.log("Actions may not repeat", maxActions[0]);
+                throw Error("Actions may not repeat");
             case 'CANCEL':
                 this.initState(maxActions[0]);
                 break;
@@ -237,11 +242,15 @@ export class Runner {
                 if (maxActions[0].state !== status.value) {
                     throw Error("Invariant error");
                 }
+                maxActions[0].state = {};
                 break;
             case 'CONSUME':
                 console.log("Actions may not consume", maxActions[0]);
                 throw Error("Actions may not consume");
         }
+
+        // Resolve again until no action is performed.
+        queueMicrotask(() => this.resolveActions());
     }
 
     dispatch(hook: keyof Hooks<void>) {
@@ -272,7 +281,7 @@ export class Runner {
                 }
             }
         }
-        this.resolveActions();
+        queueMicrotask(() => this.resolveActions());
     }
 }
 
